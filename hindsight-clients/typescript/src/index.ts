@@ -355,9 +355,9 @@ export class HindsightClient {
         options: {
             /** @deprecated Display label only. */
             name?: string;
-            /** @deprecated Use updateBankConfig({ reflectMission }) instead. */
+            /** @deprecated Use reflectMission instead. */
             mission?: string;
-            /** @deprecated Alias for mission. */
+            /** Mission/context for Reflect operations. */
             reflectMission?: string;
             /** @deprecated Alias for mission. */
             background?: string;
@@ -388,7 +388,8 @@ export class HindsightClient {
             path: { bank_id: bankId },
             body: {
                 name: options.name,
-                mission: options.mission ?? options.reflectMission,
+                mission: options.mission,
+                reflect_mission: options.reflectMission,
                 background: options.background,
                 disposition: options.disposition,
                 disposition_skepticism: options.dispositionSkepticism,

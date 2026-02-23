@@ -34,15 +34,15 @@ class CreateBankRequest(BaseModel):
     disposition_literalism: Optional[Annotated[int, Field(le=5, strict=True, ge=1)]] = None
     disposition_empathy: Optional[Annotated[int, Field(le=5, strict=True, ge=1)]] = None
     mission: Optional[StrictStr] = None
-    reflect_mission: Optional[StrictStr] = None
     background: Optional[StrictStr] = None
+    reflect_mission: Optional[StrictStr] = None
     retain_mission: Optional[StrictStr] = None
     retain_extraction_mode: Optional[StrictStr] = None
     retain_custom_instructions: Optional[StrictStr] = None
     retain_chunk_size: Optional[StrictInt] = None
     enable_observations: Optional[StrictBool] = None
     observations_mission: Optional[StrictStr] = None
-    __properties: ClassVar[List[str]] = ["name", "disposition", "disposition_skepticism", "disposition_literalism", "disposition_empathy", "mission", "reflect_mission", "background", "retain_mission", "retain_extraction_mode", "retain_custom_instructions", "retain_chunk_size", "enable_observations", "observations_mission"]
+    __properties: ClassVar[List[str]] = ["name", "disposition", "disposition_skepticism", "disposition_literalism", "disposition_empathy", "mission", "background", "reflect_mission", "retain_mission", "retain_extraction_mode", "retain_custom_instructions", "retain_chunk_size", "enable_observations", "observations_mission"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -116,15 +116,15 @@ class CreateBankRequest(BaseModel):
         if self.mission is None and "mission" in self.model_fields_set:
             _dict['mission'] = None
 
-        # set to None if reflect_mission (nullable) is None
-        # and model_fields_set contains the field
-        if self.reflect_mission is None and "reflect_mission" in self.model_fields_set:
-            _dict['reflect_mission'] = None
-
         # set to None if background (nullable) is None
         # and model_fields_set contains the field
         if self.background is None and "background" in self.model_fields_set:
             _dict['background'] = None
+
+        # set to None if reflect_mission (nullable) is None
+        # and model_fields_set contains the field
+        if self.reflect_mission is None and "reflect_mission" in self.model_fields_set:
+            _dict['reflect_mission'] = None
 
         # set to None if retain_mission (nullable) is None
         # and model_fields_set contains the field
@@ -174,8 +174,8 @@ class CreateBankRequest(BaseModel):
             "disposition_literalism": obj.get("disposition_literalism"),
             "disposition_empathy": obj.get("disposition_empathy"),
             "mission": obj.get("mission"),
-            "reflect_mission": obj.get("reflect_mission"),
             "background": obj.get("background"),
+            "reflect_mission": obj.get("reflect_mission"),
             "retain_mission": obj.get("retain_mission"),
             "retain_extraction_mode": obj.get("retain_extraction_mode"),
             "retain_custom_instructions": obj.get("retain_custom_instructions"),

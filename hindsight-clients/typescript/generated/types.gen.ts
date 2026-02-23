@@ -457,17 +457,17 @@ export type CreateBankRequest = {
    */
   mission?: string | null;
   /**
-   * Reflect Mission
-   *
-   * Deprecated: use update_bank_config with reflect_mission instead
-   */
-  reflect_mission?: string | null;
-  /**
    * Background
    *
    * Deprecated: use update_bank_config with reflect_mission instead
    */
   background?: string | null;
+  /**
+   * Reflect Mission
+   *
+   * Mission/context for Reflect operations. Guides how Reflect interprets and uses memories.
+   */
+  reflect_mission?: string | null;
   /**
    * Retain Mission
    *

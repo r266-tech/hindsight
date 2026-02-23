@@ -904,12 +904,14 @@ class CreateBankRequest(BaseModel):
         default=None, description="Deprecated: use update_bank_config with reflect_mission instead"
     )
     # Deprecated alias for mission
-    reflect_mission: str | None = Field(
-        default=None, description="Deprecated: use update_bank_config with reflect_mission instead"
-    )
-    # Deprecated alias for mission
     background: str | None = Field(
         default=None, description="Deprecated: use update_bank_config with reflect_mission instead"
+    )
+
+    # Reflect configuration
+    reflect_mission: str | None = Field(
+        default=None,
+        description="Mission/context for Reflect operations. Guides how Reflect interprets and uses memories.",
     )
 
     # Operational configuration (applied via config resolver)
@@ -945,8 +947,8 @@ class CreateBankRequest(BaseModel):
         Individual disposition_* fields take priority over the deprecated disposition dict.
         """
         updates: dict[str, Any] = {}
-        # Resolve reflect mission: mission > reflect_mission > background (all deprecated)
-        resolved_reflect_mission = self.mission or self.reflect_mission or self.background
+        # Resolve reflect mission: reflect_mission (new) > mission (deprecated) > background (deprecated)
+        resolved_reflect_mission = self.reflect_mission or self.mission or self.background
         if resolved_reflect_mission is not None:
             updates["reflect_mission"] = resolved_reflect_mission
         # Disposition: individual fields take priority over legacy disposition dict

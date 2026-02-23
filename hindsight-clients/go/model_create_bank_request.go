@@ -25,8 +25,8 @@ type CreateBankRequest struct {
 	DispositionLiteralism NullableInt32 `json:"disposition_literalism,omitempty"`
 	DispositionEmpathy NullableInt32 `json:"disposition_empathy,omitempty"`
 	Mission NullableString `json:"mission,omitempty"`
-	ReflectMission NullableString `json:"reflect_mission,omitempty"`
 	Background NullableString `json:"background,omitempty"`
+	ReflectMission NullableString `json:"reflect_mission,omitempty"`
 	RetainMission NullableString `json:"retain_mission,omitempty"`
 	RetainExtractionMode NullableString `json:"retain_extraction_mode,omitempty"`
 	RetainCustomInstructions NullableString `json:"retain_custom_instructions,omitempty"`
@@ -304,48 +304,6 @@ func (o *CreateBankRequest) UnsetMission() {
 	o.Mission.Unset()
 }
 
-// GetReflectMission returns the ReflectMission field value if set, zero value otherwise (both if not set or set to explicit null).
-func (o *CreateBankRequest) GetReflectMission() string {
-	if o == nil || IsNil(o.ReflectMission.Get()) {
-		var ret string
-		return ret
-	}
-	return *o.ReflectMission.Get()
-}
-
-// GetReflectMissionOk returns a tuple with the ReflectMission field value if set, nil otherwise
-// and a boolean to check if the value has been set.
-// NOTE: If the value is an explicit nil, `nil, true` will be returned
-func (o *CreateBankRequest) GetReflectMissionOk() (*string, bool) {
-	if o == nil {
-		return nil, false
-	}
-	return o.ReflectMission.Get(), o.ReflectMission.IsSet()
-}
-
-// HasReflectMission returns a boolean if a field has been set.
-func (o *CreateBankRequest) HasReflectMission() bool {
-	if o != nil && o.ReflectMission.IsSet() {
-		return true
-	}
-
-	return false
-}
-
-// SetReflectMission gets a reference to the given NullableString and assigns it to the ReflectMission field.
-func (o *CreateBankRequest) SetReflectMission(v string) {
-	o.ReflectMission.Set(&v)
-}
-// SetReflectMissionNil sets the value for ReflectMission to be an explicit nil
-func (o *CreateBankRequest) SetReflectMissionNil() {
-	o.ReflectMission.Set(nil)
-}
-
-// UnsetReflectMission ensures that no value is present for ReflectMission, not even an explicit nil
-func (o *CreateBankRequest) UnsetReflectMission() {
-	o.ReflectMission.Unset()
-}
-
 // GetBackground returns the Background field value if set, zero value otherwise (both if not set or set to explicit null).
 func (o *CreateBankRequest) GetBackground() string {
 	if o == nil || IsNil(o.Background.Get()) {
@@ -386,6 +344,48 @@ func (o *CreateBankRequest) SetBackgroundNil() {
 // UnsetBackground ensures that no value is present for Background, not even an explicit nil
 func (o *CreateBankRequest) UnsetBackground() {
 	o.Background.Unset()
+}
+
+// GetReflectMission returns the ReflectMission field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *CreateBankRequest) GetReflectMission() string {
+	if o == nil || IsNil(o.ReflectMission.Get()) {
+		var ret string
+		return ret
+	}
+	return *o.ReflectMission.Get()
+}
+
+// GetReflectMissionOk returns a tuple with the ReflectMission field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+func (o *CreateBankRequest) GetReflectMissionOk() (*string, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return o.ReflectMission.Get(), o.ReflectMission.IsSet()
+}
+
+// HasReflectMission returns a boolean if a field has been set.
+func (o *CreateBankRequest) HasReflectMission() bool {
+	if o != nil && o.ReflectMission.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetReflectMission gets a reference to the given NullableString and assigns it to the ReflectMission field.
+func (o *CreateBankRequest) SetReflectMission(v string) {
+	o.ReflectMission.Set(&v)
+}
+// SetReflectMissionNil sets the value for ReflectMission to be an explicit nil
+func (o *CreateBankRequest) SetReflectMissionNil() {
+	o.ReflectMission.Set(nil)
+}
+
+// UnsetReflectMission ensures that no value is present for ReflectMission, not even an explicit nil
+func (o *CreateBankRequest) UnsetReflectMission() {
+	o.ReflectMission.Unset()
 }
 
 // GetRetainMission returns the RetainMission field value if set, zero value otherwise (both if not set or set to explicit null).
@@ -668,11 +668,11 @@ func (o CreateBankRequest) ToMap() (map[string]interface{}, error) {
 	if o.Mission.IsSet() {
 		toSerialize["mission"] = o.Mission.Get()
 	}
-	if o.ReflectMission.IsSet() {
-		toSerialize["reflect_mission"] = o.ReflectMission.Get()
-	}
 	if o.Background.IsSet() {
 		toSerialize["background"] = o.Background.Get()
+	}
+	if o.ReflectMission.IsSet() {
+		toSerialize["reflect_mission"] = o.ReflectMission.Get()
 	}
 	if o.RetainMission.IsSet() {
 		toSerialize["retain_mission"] = o.RetainMission.Get()

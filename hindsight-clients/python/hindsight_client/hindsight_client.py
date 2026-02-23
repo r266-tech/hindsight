@@ -399,13 +399,13 @@ class Hindsight:
         enable_observations: bool | None = None,
         observations_mission: str | None = None,
         reflect_mission: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> BankProfileResponse:
         """Create or update a memory bank.
 
         Args:
             bank_id: Unique identifier for the bank
             name: Deprecated. Display label only.
-            mission: Deprecated. Use update_bank_config(reflect_mission=...) instead.
+            mission: Deprecated. Use reflect_mission instead.
             disposition_skepticism: Deprecated. Use update_bank_config(disposition_skepticism=...) instead.
             disposition_literalism: Deprecated. Use update_bank_config(disposition_literalism=...) instead.
             disposition_empathy: Deprecated. Use update_bank_config(disposition_empathy=...) instead.
@@ -416,7 +416,7 @@ class Hindsight:
             retain_chunk_size: Maximum token size for each content chunk during retain.
             enable_observations: Toggle automatic observation consolidation after retain().
             observations_mission: Controls what gets synthesised into observations. Replaces built-in rules.
-            reflect_mission: Deprecated alias for mission.
+            reflect_mission: Mission/context for Reflect operations.
         """
         return _run_async(
             self._acreate_bank(
@@ -453,7 +453,7 @@ class Hindsight:
         retain_chunk_size: int | None = None,
         enable_observations: bool | None = None,
         observations_mission: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> BankProfileResponse:
         import aiohttp
 
         body: dict[str, Any] = {}
@@ -461,8 +461,8 @@ class Hindsight:
             body["name"] = name
         if mission is not None:
             body["mission"] = mission
-        elif reflect_mission is not None:
-            body["mission"] = reflect_mission
+        if reflect_mission is not None:
+            body["reflect_mission"] = reflect_mission
         # Individual disposition fields take priority over legacy disposition dict
         if disposition_skepticism is not None:
             body["disposition_skepticism"] = disposition_skepticism
@@ -496,7 +496,8 @@ class Hindsight:
                 url, json=body, headers=headers, timeout=aiohttp.ClientTimeout(total=self._timeout)
             ) as resp:
                 resp.raise_for_status()
-                return await resp.json()
+                data = await resp.json()
+                return BankProfileResponse.model_validate(data)
 
     def set_mission(self, bank_id: str, mission: str) -> dict[str, Any]:
         """Deprecated. Use update_bank_config(reflect_mission=...) instead."""
@@ -524,13 +525,13 @@ class Hindsight:
         enable_observations: bool | None = None,
         observations_mission: str | None = None,
         reflect_mission: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> BankProfileResponse:
         """Create or update a memory bank (async).
 
         Args:
             bank_id: Unique identifier for the bank
             name: Deprecated. Display label only.
-            mission: Deprecated. Use update_bank_config(reflect_mission=...) instead.
+            mission: Deprecated. Use reflect_mission instead.
             disposition_skepticism: Deprecated. Use update_bank_config(disposition_skepticism=...) instead.
             disposition_literalism: Deprecated. Use update_bank_config(disposition_literalism=...) instead.
             disposition_empathy: Deprecated. Use update_bank_config(disposition_empathy=...) instead.
@@ -541,7 +542,7 @@ class Hindsight:
             retain_chunk_size: Maximum token size for each content chunk during retain.
             enable_observations: Toggle automatic observation consolidation after retain().
             observations_mission: Controls what gets synthesised into observations. Replaces built-in rules.
-            reflect_mission: Deprecated alias for mission.
+            reflect_mission: Mission/context for Reflect operations.
         """
         return await self._acreate_bank(
             bank_id,

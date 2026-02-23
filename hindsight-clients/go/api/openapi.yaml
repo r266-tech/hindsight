@@ -2646,10 +2646,10 @@ components:
         mission:
           nullable: true
           type: string
-        reflect_mission:
+        background:
           nullable: true
           type: string
-        background:
+        reflect_mission:
           nullable: true
           type: string
         retain_mission:

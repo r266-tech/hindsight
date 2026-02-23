@@ -3942,18 +3942,6 @@
             "title": "Mission",
             "description": "Deprecated: use update_bank_config with reflect_mission instead"
           },
-          "reflect_mission": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reflect Mission",
-            "description": "Deprecated: use update_bank_config with reflect_mission instead"
-          },
           "background": {
             "anyOf": [
               {
@@ -3965,6 +3953,18 @@
             ],
             "title": "Background",
             "description": "Deprecated: use update_bank_config with reflect_mission instead"
+          },
+          "reflect_mission": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reflect Mission",
+            "description": "Mission/context for Reflect operations. Guides how Reflect interprets and uses memories."
           },
           "retain_mission": {
             "anyOf": [
