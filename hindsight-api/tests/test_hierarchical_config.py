@@ -79,9 +79,13 @@ async def test_hierarchical_fields_categorization():
     assert "retain_chunk_size" in configurable
     assert "enable_observations" in configurable
     assert "observations_mission" in configurable
+    assert "reflect_mission" in configurable
+    assert "disposition_skepticism" in configurable
+    assert "disposition_literalism" in configurable
+    assert "disposition_empathy" in configurable
 
     # Verify count is correct
-    assert len(configurable) == 6
+    assert len(configurable) == 10
 
     # Verify credential fields (NEVER exposed)
     assert "llm_api_key" in credentials
