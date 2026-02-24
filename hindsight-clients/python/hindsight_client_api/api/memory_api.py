@@ -19,6 +19,7 @@ from typing_extensions import Annotated
 from pydantic import Field, StrictInt, StrictStr
 from typing import Any, Optional
 from typing_extensions import Annotated
+from hindsight_client_api.models.clear_memory_observations_response import ClearMemoryObservationsResponse
 from hindsight_client_api.models.delete_response import DeleteResponse
 from hindsight_client_api.models.graph_data_response import GraphDataResponse
 from hindsight_client_api.models.list_memory_units_response import ListMemoryUnitsResponse
@@ -361,7 +362,7 @@ class MemoryApi:
         _content_type: Optional[StrictStr] = None,
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
-    ) -> DeleteResponse:
+    ) -> ClearMemoryObservationsResponse:
         """Clear observations for a memory
 
         Delete all observations derived from a specific memory and reset it for re-consolidation. The memory itself is not deleted. A consolidation job is triggered automatically so the memory will produce fresh observations on the next consolidation run.
@@ -405,7 +406,7 @@ class MemoryApi:
         )
 
         _response_types_map: Dict[str, Optional[str]] = {
-            '200': "DeleteResponse",
+            '200': "ClearMemoryObservationsResponse",
             '422': "HTTPValidationError",
         }
         response_data = await self.api_client.call_api(
@@ -437,7 +438,7 @@ class MemoryApi:
         _content_type: Optional[StrictStr] = None,
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
-    ) -> ApiResponse[DeleteResponse]:
+    ) -> ApiResponse[ClearMemoryObservationsResponse]:
         """Clear observations for a memory
 
         Delete all observations derived from a specific memory and reset it for re-consolidation. The memory itself is not deleted. A consolidation job is triggered automatically so the memory will produce fresh observations on the next consolidation run.
@@ -481,7 +482,7 @@ class MemoryApi:
         )
 
         _response_types_map: Dict[str, Optional[str]] = {
-            '200': "DeleteResponse",
+            '200': "ClearMemoryObservationsResponse",
             '422': "HTTPValidationError",
         }
         response_data = await self.api_client.call_api(
@@ -557,7 +558,7 @@ class MemoryApi:
         )
 
         _response_types_map: Dict[str, Optional[str]] = {
-            '200': "DeleteResponse",
+            '200': "ClearMemoryObservationsResponse",
             '422': "HTTPValidationError",
         }
         response_data = await self.api_client.call_api(

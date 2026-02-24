@@ -397,6 +397,18 @@ export type ChunkResponse = {
 };
 
 /**
+ * ClearMemoryObservationsResponse
+ *
+ * Response model for clearing observations for a specific memory.
+ */
+export type ClearMemoryObservationsResponse = {
+  /**
+   * Deleted Count
+   */
+  deleted_count: number;
+};
+
+/**
  * ConsolidationResponse
  *
  * Response model for consolidation trigger endpoint.
@@ -3691,10 +3703,10 @@ export type ClearMemoryObservationsResponses = {
   /**
    * Successful Response
    */
-  200: DeleteResponse;
+  200: ClearMemoryObservationsResponse;
 };
 
-export type ClearMemoryObservationsResponse =
+export type ClearMemoryObservationsResponse2 =
   ClearMemoryObservationsResponses[keyof ClearMemoryObservationsResponses];
 
 export type ResetBankConfigData = {

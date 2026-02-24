@@ -2801,7 +2801,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeleteResponse"
+                  "$ref": "#/components/schemas/ClearMemoryObservationsResponse"
                 }
               }
             }
@@ -3908,6 +3908,23 @@
           "chunk_text": "This is the first chunk of the document...",
           "created_at": "2024-01-15T10:30:00Z",
           "document_id": "session_1"
+        }
+      },
+      "ClearMemoryObservationsResponse": {
+        "properties": {
+          "deleted_count": {
+            "type": "integer",
+            "title": "Deleted Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted_count"
+        ],
+        "title": "ClearMemoryObservationsResponse",
+        "description": "Response model for clearing observations for a specific memory.",
+        "example": {
+          "deleted_count": 3
         }
       },
       "ConsolidationResponse": {

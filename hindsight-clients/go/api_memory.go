@@ -168,7 +168,7 @@ func (r ApiClearMemoryObservationsRequest) Authorization(authorization string) A
 	return r
 }
 
-func (r ApiClearMemoryObservationsRequest) Execute() (*DeleteResponse, *http.Response, error) {
+func (r ApiClearMemoryObservationsRequest) Execute() (*ClearMemoryObservationsResponse, *http.Response, error) {
 	return r.ApiService.ClearMemoryObservationsExecute(r)
 }
 
@@ -192,13 +192,13 @@ func (a *MemoryAPIService) ClearMemoryObservations(ctx context.Context, bankId s
 }
 
 // Execute executes the request
-//  @return DeleteResponse
-func (a *MemoryAPIService) ClearMemoryObservationsExecute(r ApiClearMemoryObservationsRequest) (*DeleteResponse, *http.Response, error) {
+//  @return ClearMemoryObservationsResponse
+func (a *MemoryAPIService) ClearMemoryObservationsExecute(r ApiClearMemoryObservationsRequest) (*ClearMemoryObservationsResponse, *http.Response, error) {
 	var (
 		localVarHTTPMethod   = http.MethodDelete
 		localVarPostBody     interface{}
 		formFiles            []formFile
-		localVarReturnValue  *DeleteResponse
+		localVarReturnValue  *ClearMemoryObservationsResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "MemoryAPIService.ClearMemoryObservations")

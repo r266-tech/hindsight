@@ -1235,6 +1235,14 @@ class DeleteResponse(BaseModel):
     deleted_count: int | None = None
 
 
+class ClearMemoryObservationsResponse(BaseModel):
+    """Response model for clearing observations for a specific memory."""
+
+    model_config = ConfigDict(json_schema_extra={"example": {"deleted_count": 3}})
+
+    deleted_count: int
+
+
 class BankStatsResponse(BaseModel):
     """Response model for bank statistics endpoint."""
 
@@ -3551,7 +3559,7 @@ def _register_routes(app: FastAPI):
 
     @app.delete(
         "/v1/default/banks/{bank_id}/memories/{memory_id}/observations",
-        response_model=DeleteResponse,
+        response_model=ClearMemoryObservationsResponse,
         summary="Clear observations for a memory",
         description="Delete all observations derived from a specific memory and reset it for re-consolidation. "
         "The memory itself is not deleted. A consolidation job is triggered automatically so the memory "
@@ -3571,11 +3579,7 @@ def _register_routes(app: FastAPI):
                 memory_id=memory_id,
                 request_context=request_context,
             )
-            return DeleteResponse(
-                success=True,
-                message=f"Cleared {result['deleted_count']} observations for memory {memory_id}",
-                deleted_count=result["deleted_count"],
-            )
+            return ClearMemoryObservationsResponse(deleted_count=result["deleted_count"])
         except (AuthenticationError, HTTPException):
             raise
         except Exception as e:

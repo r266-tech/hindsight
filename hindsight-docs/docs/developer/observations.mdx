@@ -172,14 +172,9 @@ After deletion, the **remaining source memories** that fed the affected observat
 
 ### Clearing Observations for a Specific Memory
 
-You can clear all observations derived from a single memory without deleting the memory itself. This is useful when you want to force re-synthesis of a memory's contribution to consolidated knowledge:
+You can clear all observations derived from a single memory without deleting the memory itself. This is useful when you want to force re-synthesis of a memory's contribution to consolidated knowledge.
 
-```python
-# Clear all observations derived from a specific memory
-client.clear_memory_observations(bank_id="my-bank", memory_id="<memory-id>")
-```
-
-This will:
+Use the `DELETE /v1/default/banks/{bank_id}/memories/{memory_id}/observations` endpoint. This will:
 1. Delete all observations that list the memory as a source
 2. Reset `consolidated_at` on the memory itself and any other source memories that contributed to those observations
 3. Trigger a consolidation job so fresh observations are produced automatically

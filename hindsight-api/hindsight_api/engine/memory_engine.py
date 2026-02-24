@@ -3184,7 +3184,7 @@ class MemoryEngine(MemoryEngineInterface):
 
                 # Invalidate observations referencing these memories before deletion
                 if unit_ids:
-                    invalidated_obs = await self._invalidate_facts_from_mental_models(conn, bank_id, unit_ids)
+                    invalidated_obs = await self._delete_stale_observations_for_memories(conn, bank_id, unit_ids)
 
                 # Delete document (cascades to memory_units and all their links)
                 deleted = await conn.fetchval(
@@ -3199,10 +3199,7 @@ class MemoryEngine(MemoryEngineInterface):
                 }
 
         if invalidated_obs > 0:
-            try:
-                await self.submit_async_consolidation(bank_id=bank_id, request_context=request_context)
-            except Exception as e:
-                logger.warning(f"Failed to submit consolidation after document deletion for bank {bank_id}: {e}")
+            await self.submit_async_consolidation(bank_id=bank_id, request_context=request_context)
 
         return result
 
@@ -3246,7 +3243,7 @@ class MemoryEngine(MemoryEngineInterface):
 
                 # Invalidate observations before deletion (only for source memory types)
                 if bank_id and fact_type in ("experience", "world"):
-                    invalidated_obs = await self._invalidate_facts_from_mental_models(conn, bank_id, [unit_id])
+                    invalidated_obs = await self._delete_stale_observations_for_memories(conn, bank_id, [unit_id])
                     if invalidated_obs > 0:
                         bank_id_for_consolidation = bank_id
 
@@ -3264,14 +3261,7 @@ class MemoryEngine(MemoryEngineInterface):
                 }
 
         if bank_id_for_consolidation:
-            try:
-                await self.submit_async_consolidation(
-                    bank_id=bank_id_for_consolidation, request_context=request_context
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Failed to submit consolidation after memory unit deletion for bank {bank_id_for_consolidation}: {e}"
-                )
+            await self.submit_async_consolidation(bank_id=bank_id_for_consolidation, request_context=request_context)
 
         return result
 
@@ -3320,7 +3310,7 @@ class MemoryEngine(MemoryEngineInterface):
                             )
                             unit_ids = [str(row["id"]) for row in unit_id_rows]
                             if unit_ids:
-                                invalidated_obs = await self._invalidate_facts_from_mental_models(
+                                invalidated_obs = await self._delete_stale_observations_for_memories(
                                     conn, bank_id, unit_ids
                                 )
 
@@ -3374,12 +3364,7 @@ class MemoryEngine(MemoryEngineInterface):
                     raise Exception(f"Failed to delete agent data: {str(e)}")
 
         if invalidated_obs > 0:
-            try:
-                await self.submit_async_consolidation(bank_id=bank_id, request_context=request_context)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to submit consolidation after clearing memories by type for bank {bank_id}: {e}"
-                )
+            await self.submit_async_consolidation(bank_id=bank_id, request_context=request_context)
 
         return result
 
@@ -3460,7 +3445,7 @@ class MemoryEngine(MemoryEngineInterface):
             async with conn.transaction():
                 import uuid as uuid_module
 
-                deleted_count = await self._invalidate_facts_from_mental_models(conn, bank_id, [memory_id])
+                deleted_count = await self._delete_stale_observations_for_memories(conn, bank_id, [memory_id])
 
                 # Also reset this memory's own consolidated_at so it gets re-consolidated
                 # (the memory was a source for the deleted observations, so it needs new ones)
@@ -3478,12 +3463,7 @@ class MemoryEngine(MemoryEngineInterface):
                     )
 
         if deleted_count > 0:
-            try:
-                await self.submit_async_consolidation(bank_id=bank_id, request_context=request_context)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to submit consolidation after clearing observations for memory {memory_id} in bank {bank_id}: {e}"
-                )
+            await self.submit_async_consolidation(bank_id=bank_id, request_context=request_context)
 
         return {"deleted_count": deleted_count}
 
@@ -5103,7 +5083,7 @@ class MemoryEngine(MemoryEngineInterface):
             )
             return count or 0
 
-    async def _invalidate_facts_from_mental_models(
+    async def _delete_stale_observations_for_memories(
         self,
         conn,
         bank_id: str,
