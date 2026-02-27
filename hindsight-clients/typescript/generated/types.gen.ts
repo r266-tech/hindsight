@@ -1196,9 +1196,9 @@ export type MemoryItem = {
    */
   tags?: Array<string> | null;
   /**
-   * Observation Scopes
+   * ObservationScopes
    *
-   * How to scope observations during consolidation. 'per_tag' runs one consolidation pass per individual tag, creating separate observations for each entity. 'combined' (default) runs a single pass with all tags together. A list of tag lists runs one pass per inner list, giving full control over which combinations to use.
+   * How to scope observations during consolidation. 'per_tag' runs one consolidation pass per individual tag, creating separate observations for each tag. 'combined' (default) runs a single pass with all tags together. A list of tag lists runs one pass per inner list, giving full control over which combinations to use.
    */
   observation_scopes?:
     | "per_tag"
