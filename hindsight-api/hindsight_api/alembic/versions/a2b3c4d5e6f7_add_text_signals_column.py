@@ -19,7 +19,7 @@ from collections.abc import Sequence
 from alembic import context, op
 
 revision: str = "a2b3c4d5e6f7"
-down_revision: str | Sequence[str] | None = "z1u2v3w4x5y6"
+down_revision: str | Sequence[str] | None = "aa2b3c4d5e6f"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
