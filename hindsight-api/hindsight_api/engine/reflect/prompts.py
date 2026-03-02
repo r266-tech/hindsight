@@ -13,7 +13,10 @@ from typing import Any
 import tiktoken
 
 _TIKTOKEN_ENCODING = tiktoken.get_encoding("cl100k_base")
-_FINAL_PROMPT_CONTEXT_BUDGET = 60_000  # Max tokens for tool results in the final prompt
+
+# Fraction of max_context_tokens reserved for tool results in the final synthesis prompt.
+# The remainder covers the system prompt, question, bank context, and output tokens.
+_FINAL_PROMPT_CONTEXT_FRACTION = 0.8
 
 
 def _extract_directive_rules(directives: list[dict[str, Any]]) -> list[str]:
@@ -399,6 +402,7 @@ def build_final_prompt(
     context_history: list[dict],
     bank_profile: dict,
     additional_context: str | None = None,
+    max_context_tokens: int = 100_000,
 ) -> str:
     """Build the final prompt when forcing a text response (no tools)."""
     parts = []
@@ -432,7 +436,7 @@ def build_final_prompt(
     # preferring the most recent calls (they tend to be the most targeted).
     if context_history:
         parts.append("\n## Retrieved Data (synthesize and reason from this data)")
-        token_budget = _FINAL_PROMPT_CONTEXT_BUDGET
+        token_budget = int(max_context_tokens * _FINAL_PROMPT_CONTEXT_FRACTION)
         # Render entries newest-first, then reverse so the prompt reads chronologically.
         rendered: list[str] = []
         truncated = False
