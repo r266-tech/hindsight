@@ -732,7 +732,7 @@ class ConfiguredLLMProvider:
 
         token = _safety_settings_ctx.set(object.__getattribute__(self, "_gemini_safety_settings"))
         try:
-            return await object.__getattribute__(self, "_provider").call(messages, **kwargs)
+            return await object.__getattribute__(self, "_provider").call(messages=messages, **kwargs)
         finally:
             _safety_settings_ctx.reset(token)
 
@@ -746,7 +746,9 @@ class ConfiguredLLMProvider:
 
         token = _safety_settings_ctx.set(object.__getattribute__(self, "_gemini_safety_settings"))
         try:
-            return await object.__getattribute__(self, "_provider").call_with_tools(messages, tools, **kwargs)
+            return await object.__getattribute__(self, "_provider").call_with_tools(
+                messages=messages, tools=tools, **kwargs
+            )
         finally:
             _safety_settings_ctx.reset(token)
 
