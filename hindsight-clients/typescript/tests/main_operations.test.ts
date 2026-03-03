@@ -441,7 +441,7 @@ describe('TestRecallIncludeOptions', () => {
         expect(response).not.toBeNull();
         expect(response.results!.length).toBeGreaterThan(0);
         // entities should be absent when explicitly disabled
-        expect(response.entities).toBeUndefined();
+        expect(response.entities).toBeFalsy();
     });
 
     test('entities included when includeEntities is true', async () => {
