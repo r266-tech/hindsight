@@ -993,7 +993,9 @@ export function WebhooksView() {
       {/* Delete Confirmation Dialog */}
       <Dialog
         open={!!deleteConfirmWebhook}
-        onOpenChange={(open) => { if (!open) setDeleteConfirmWebhook(null); }}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirmWebhook(null);
+        }}
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
