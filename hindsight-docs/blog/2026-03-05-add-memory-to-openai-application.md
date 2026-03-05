@@ -116,6 +116,8 @@ It includes:
 
 No external infrastructure.
 
+> **Prefer not to self-host?** [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup) gives you the same API with no setup — just swap `base_url` for your Cloud endpoint.
+
 ---
 
 ## Step 2 — Baseline Chat (No Memory)
