@@ -19,11 +19,24 @@ def _make_google_auth_credential_provider():
     authorized_user JSON types.  This provider uses the google-auth library
     which additionally handles external_account (Workload Identity Federation),
     impersonated credentials, and metadata-server credentials.
+
+    If GOOGLE_APPLICATION_CREDENTIALS is not set (e.g. unset to prevent obstore
+    from reading it), falls back to HINDSIGHT_GOOGLE_CREDENTIALS_FILE.
     """
     import google.auth
     import google.auth.transport.requests
 
-    credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+
+    # Check for renamed credential file (set when GOOGLE_APPLICATION_CREDENTIALS
+    # is intentionally unset to prevent obstore from reading it)
+    cred_file = os.environ.get("HINDSIGHT_GOOGLE_CREDENTIALS_FILE")
+    if cred_file:
+        credentials, _ = google.auth.load_credentials_from_file(cred_file, scopes=scopes)
+        logger.info("Loaded GCS credentials from HINDSIGHT_GOOGLE_CREDENTIALS_FILE")
+    else:
+        credentials, _ = google.auth.default(scopes=scopes)
+
     request = google.auth.transport.requests.Request()
 
     def _provide():
@@ -63,18 +76,7 @@ class GCSFileStorage(FileStorage):
                     f"Failed to create google.auth credential provider, falling back to obstore defaults: {e}"
                 )
 
-        # When using a custom credential_provider, temporarily hide
-        # GOOGLE_APPLICATION_CREDENTIALS so GCSStore doesn't try to parse
-        # credential types it doesn't understand (e.g. external_account).
-        saved_creds = None
-        if "credential_provider" in kwargs and "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
-            saved_creds = os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS")
-
-        try:
-            self._store = GCSStore(bucket, **kwargs)
-        finally:
-            if saved_creds is not None:
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = saved_creds
+        self._store = GCSStore(bucket, **kwargs)
         logger.info(f"Initialized GCS file storage: bucket={bucket}")
 
     async def store(self, file_data: bytes, key: str, metadata: dict[str, str] | None = None) -> str:
