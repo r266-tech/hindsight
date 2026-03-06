@@ -39,6 +39,9 @@ type RetainEdits = {
 
 type ObservationsEdits = {
   enable_observations: boolean | null;
+  consolidation_llm_batch_size: number | null;
+  consolidation_source_facts_max_tokens: number | null;
+  consolidation_source_facts_max_tokens_per_observation: number | null;
   observations_mission: string | null;
 };
 
@@ -143,6 +146,10 @@ function retainSlice(config: Record<string, any>): RetainEdits {
 function observationsSlice(config: Record<string, any>): ObservationsEdits {
   return {
     enable_observations: config.enable_observations ?? null,
+    consolidation_llm_batch_size: config.consolidation_llm_batch_size ?? null,
+    consolidation_source_facts_max_tokens: config.consolidation_source_facts_max_tokens ?? null,
+    consolidation_source_facts_max_tokens_per_observation:
+      config.consolidation_source_facts_max_tokens_per_observation ?? null,
     observations_mission: config.observations_mission ?? null,
   };
 }
@@ -539,6 +546,64 @@ export function BankConfigView() {
                 }
               />
             </div>
+          </FieldRow>
+          <FieldRow
+            label="LLM Batch Size"
+            description="Number of facts sent to the LLM in a single consolidation call. Higher values reduce LLM calls at the cost of larger prompts. Leave blank to use the server default."
+          >
+            <Input
+              type="number"
+              min={1}
+              max={64}
+              value={observationsEdits.consolidation_llm_batch_size ?? ""}
+              onChange={(e) =>
+                setObservationsEdits((prev) => ({
+                  ...prev,
+                  consolidation_llm_batch_size: e.target.value
+                    ? parseInt(e.target.value, 10)
+                    : null,
+                }))
+              }
+              placeholder="Server default"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Source Facts Max Tokens"
+            description="Total token budget for source facts included with observations during consolidation. -1 = unlimited."
+          >
+            <Input
+              type="number"
+              min={-1}
+              value={observationsEdits.consolidation_source_facts_max_tokens ?? ""}
+              onChange={(e) =>
+                setObservationsEdits((prev) => ({
+                  ...prev,
+                  consolidation_source_facts_max_tokens: e.target.value
+                    ? parseInt(e.target.value, 10)
+                    : null,
+                }))
+              }
+              placeholder="Server default"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Source Facts Max Tokens Per Observation"
+            description="Per-observation token cap for source facts during consolidation. Each observation gets at most this many tokens of source facts. -1 = unlimited."
+          >
+            <Input
+              type="number"
+              min={-1}
+              value={observationsEdits.consolidation_source_facts_max_tokens_per_observation ?? ""}
+              onChange={(e) =>
+                setObservationsEdits((prev) => ({
+                  ...prev,
+                  consolidation_source_facts_max_tokens_per_observation: e.target.value
+                    ? parseInt(e.target.value, 10)
+                    : null,
+                }))
+              }
+              placeholder="Server default"
+            />
           </FieldRow>
           <TextareaRow
             label="Mission"

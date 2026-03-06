@@ -2212,6 +2212,7 @@ class MemoryEngine(MemoryEngineInterface):
         max_chunk_tokens: int = 8192,
         include_source_facts: bool = False,
         max_source_facts_tokens: int = 4096,
+        max_source_facts_tokens_per_observation: int = -1,
         request_context: "RequestContext",
         tags: list[str] | None = None,
         tags_match: TagsMatch = "any",
@@ -2353,6 +2354,7 @@ class MemoryEngine(MemoryEngineInterface):
                             quiet=_quiet,
                             include_source_facts=include_source_facts,
                             max_source_facts_tokens=max_source_facts_tokens,
+                            max_source_facts_tokens_per_observation=max_source_facts_tokens_per_observation,
                         )
                         break  # Success - exit retry loop
                     except Exception as e:
@@ -2479,6 +2481,7 @@ class MemoryEngine(MemoryEngineInterface):
         quiet: bool = False,
         include_source_facts: bool = False,
         max_source_facts_tokens: int = 4096,
+        max_source_facts_tokens_per_observation: int = -1,
     ) -> RecallResultModel:
         """
         Search implementation with modular retrieval and reranking.
@@ -3100,18 +3103,9 @@ class MemoryEngine(MemoryEngineInterface):
 
                             encoding = _get_tiktoken_encoding()
                             source_facts_dict = {}
-                            total_source_tokens = 0
-                            for sid in source_ids_ordered:
-                                if sid not in source_row_by_id:
-                                    continue
-                                r = source_row_by_id[sid]
-                                fact_tokens = len(encoding.encode(r["text"]))
-                                if (
-                                    max_source_facts_tokens >= 0
-                                    and total_source_tokens + fact_tokens > max_source_facts_tokens
-                                ):
-                                    break
-                                source_facts_dict[sid] = MemoryFact(
+
+                            def _make_source_fact(sid: str, r: Any) -> MemoryFact:
+                                return MemoryFact(
                                     id=sid,
                                     text=r["text"],
                                     fact_type=r["fact_type"],
@@ -3123,7 +3117,37 @@ class MemoryEngine(MemoryEngineInterface):
                                     chunk_id=str(r["chunk_id"]) if r["chunk_id"] else None,
                                     tags=r["tags"] or None,
                                 )
-                                total_source_tokens += fact_tokens
+
+                            if max_source_facts_tokens_per_observation >= 0:
+                                # Per-observation capping: each observation independently selects
+                                # source facts up to its token budget.
+                                for obs_id, sids in source_fact_ids_by_obs.items():
+                                    obs_tokens = 0
+                                    for sid in sids:
+                                        if sid not in source_row_by_id:
+                                            continue
+                                        r = source_row_by_id[sid]
+                                        fact_tokens = len(encoding.encode(r["text"]))
+                                        if obs_tokens + fact_tokens > max_source_facts_tokens_per_observation:
+                                            break
+                                        obs_tokens += fact_tokens
+                                        if sid not in source_facts_dict:
+                                            source_facts_dict[sid] = _make_source_fact(sid, r)
+                            else:
+                                # Global budget: fill in order of first appearance until exhausted.
+                                total_source_tokens = 0
+                                for sid in source_ids_ordered:
+                                    if sid not in source_row_by_id:
+                                        continue
+                                    r = source_row_by_id[sid]
+                                    fact_tokens = len(encoding.encode(r["text"]))
+                                    if (
+                                        max_source_facts_tokens >= 0
+                                        and total_source_tokens + fact_tokens > max_source_facts_tokens
+                                    ):
+                                        break
+                                    source_facts_dict[sid] = _make_source_fact(sid, r)
+                                    total_source_tokens += fact_tokens
 
             # Get entities for each fact if include_entities is requested
             fact_entity_map = {}  # unit_id -> list of (entity_id, entity_name)
