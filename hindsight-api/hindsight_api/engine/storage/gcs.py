@@ -1,6 +1,7 @@
 """Google Cloud Storage backend using obstore."""
 
 import logging
+from datetime import datetime, timezone
 from datetime import timedelta
 
 import obstore as obs
@@ -9,6 +10,30 @@ from obstore.store import GCSStore
 from .base import FileStorage
 
 logger = logging.getLogger(__name__)
+
+
+def _make_google_auth_credential_provider():
+    """Create a credential provider using google.auth (supports all credential types).
+
+    obstore's built-in credential parsing only supports service_account and
+    authorized_user JSON types.  This provider uses the google-auth library
+    which additionally handles external_account (Workload Identity Federation),
+    impersonated credentials, and metadata-server credentials.
+    """
+    import google.auth
+    import google.auth.transport.requests
+
+    credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    request = google.auth.transport.requests.Request()
+
+    def _provide():
+        credentials.refresh(request)
+        expiry = credentials.expiry
+        if expiry and expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        return {"token": credentials.token, "expires_at": expiry}
+
+    return _provide
 
 
 class GCSFileStorage(FileStorage):
@@ -27,6 +52,14 @@ class GCSFileStorage(FileStorage):
         kwargs: dict = {}
         if service_account_key:
             kwargs["service_account_key"] = service_account_key
+        else:
+            # Use google.auth credential provider for broad credential type support
+            # (service_account, authorized_user, external_account, metadata server, etc.)
+            try:
+                kwargs["credential_provider"] = _make_google_auth_credential_provider()
+                logger.info("Using google.auth credential provider for GCS")
+            except Exception as e:
+                logger.warning(f"Failed to create google.auth credential provider, falling back to obstore defaults: {e}")
 
         self._store = GCSStore(bucket, **kwargs)
         logger.info(f"Initialized GCS file storage: bucket={bucket}")
