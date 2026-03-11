@@ -1283,16 +1283,17 @@ class MemoryEngine(MemoryEngineInterface):
             async with acquire_with_retry(pool) as conn:
                 async with conn.transaction():
                     # Mark this operation as failed
-                    result = await conn.execute(
+                    row = await conn.fetchrow(
                         f"""
                         UPDATE {fq_table("async_operations")}
                         SET status = 'failed', error_message = $2, updated_at = NOW()
                         WHERE operation_id = $1
+                        RETURNING operation_id
                         """,
                         uuid.UUID(operation_id),
                         truncated_error,
                     )
-                    if result == "UPDATE 0":
+                    if row is None:
                         logger.info(f"Operation {operation_id} no longer exists (bank deleted), skipping mark-failed")
                         return
                     logger.info(f"Marked async operation as failed: {operation_id}")
@@ -1314,15 +1315,16 @@ class MemoryEngine(MemoryEngineInterface):
             async with acquire_with_retry(pool) as conn:
                 async with conn.transaction():
                     # Mark this operation as completed
-                    result = await conn.execute(
+                    row = await conn.fetchrow(
                         f"""
                         UPDATE {fq_table("async_operations")}
                         SET status = 'completed', updated_at = NOW(), completed_at = NOW()
                         WHERE operation_id = $1
+                        RETURNING operation_id
                         """,
                         uuid.UUID(operation_id),
                     )
-                    if result == "UPDATE 0":
+                    if row is None:
                         logger.info(
                             f"Operation {operation_id} no longer exists (bank deleted), skipping mark-completed"
                         )
@@ -1356,15 +1358,16 @@ class MemoryEngine(MemoryEngineInterface):
             pool = await self._get_pool()
             async with acquire_with_retry(pool) as conn:
                 async with conn.transaction():
-                    result = await conn.execute(
+                    row = await conn.fetchrow(
                         f"""
                         UPDATE {fq_table("async_operations")}
                         SET status = 'completed', updated_at = NOW(), completed_at = NOW()
                         WHERE operation_id = $1
+                        RETURNING operation_id
                         """,
                         uuid.UUID(operation_id),
                     )
-                    if result == "UPDATE 0":
+                    if row is None:
                         logger.info(
                             f"Operation {operation_id} no longer exists (bank deleted), skipping mark-completed"
                         )
