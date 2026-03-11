@@ -28,6 +28,7 @@ For large deployments, create indexes CONCURRENTLY before running this migration
 from collections.abc import Sequence
 
 from alembic import context, op
+from sqlalchemy import text
 
 revision: str = "d5e6f7a8b9c0"
 down_revision: str | Sequence[str] | None = "c3d4e5f6g7h8"
@@ -55,16 +56,22 @@ def upgrade() -> None:
     )
     op.execute(f"ALTER TABLE {schema}banks ADD CONSTRAINT banks_internal_id_unique UNIQUE (internal_id)")
 
-    # 2. Drop global HNSW index (competes with per-bank partial indexes)
+    # 2. Drop any fact_type-only partial HNSW indexes that may exist from prior migrations
+    #    (bank_id B-tree always wins over them when bank_id is in the WHERE clause)
+    op.execute(f"DROP INDEX IF EXISTS {schema}idx_mu_emb_world")
+    op.execute(f"DROP INDEX IF EXISTS {schema}idx_mu_emb_observation")
+    op.execute(f"DROP INDEX IF EXISTS {schema}idx_mu_emb_experience")
+
+    # 4. Drop global HNSW index (competes with per-bank partial indexes)
     op.execute(f"DROP INDEX IF EXISTS {schema}idx_memory_units_embedding")
 
-    # 3. Create per-(bank, fact_type) partial HNSW indexes for all existing banks
+    # 5. Create per-(bank, fact_type) partial HNSW indexes for all existing banks
     bind = op.get_bind()
     schema_name = context.config.get_main_option("target_schema")
     table_ref = f'"{schema_name}".memory_units' if schema_name else "memory_units"
     banks_ref = f'"{schema_name}".banks' if schema_name else "banks"
 
-    rows = bind.execute(f"SELECT bank_id, internal_id FROM {banks_ref}").fetchall()  # noqa: S608
+    rows = bind.execute(text(f"SELECT bank_id, internal_id FROM {banks_ref}")).fetchall()  # noqa: S608
     for row in rows:
         bank_id = row[0]
         internal_id = str(row[1]).replace("-", "")[:16]
@@ -73,9 +80,11 @@ def upgrade() -> None:
             idx_name = f"idx_mu_emb_{ft_short}_{internal_id}"
             # Index name is schema-unqualified (indexes live in the schema of their table)
             bind.execute(
-                f"CREATE INDEX IF NOT EXISTS {idx_name} "
-                f"ON {table_ref} USING hnsw (embedding vector_cosine_ops) "
-                f"WHERE fact_type = '{ft}' AND bank_id = '{escaped_bank_id}'"
+                text(
+                    f"CREATE INDEX IF NOT EXISTS {idx_name} "
+                    f"ON {table_ref} USING hnsw (embedding vector_cosine_ops) "
+                    f"WHERE fact_type = '{ft}' AND bank_id = '{escaped_bank_id}'"
+                )
             )
 
 
@@ -87,12 +96,12 @@ def downgrade() -> None:
     schema_name = context.config.get_main_option("target_schema")
     banks_ref = f'"{schema_name}".banks' if schema_name else "banks"
 
-    rows = bind.execute(f"SELECT internal_id FROM {banks_ref}").fetchall()  # noqa: S608
+    rows = bind.execute(text(f"SELECT internal_id FROM {banks_ref}")).fetchall()  # noqa: S608
     for row in rows:
         internal_id = str(row[0]).replace("-", "")[:16]
         for ft_short in _HNSW_FACT_TYPES.values():
             idx_name = f"idx_mu_emb_{ft_short}_{internal_id}"
-            bind.execute(f"DROP INDEX IF EXISTS {schema}{idx_name}")
+            bind.execute(text(f"DROP INDEX IF EXISTS {schema}{idx_name}"))
 
     # Restore the global HNSW index
     table_ref = f'"{schema_name}".memory_units' if schema_name else "memory_units"
