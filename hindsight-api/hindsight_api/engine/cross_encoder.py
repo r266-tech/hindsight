@@ -1094,26 +1094,19 @@ class JinaMLXCrossEncoder(CrossEncoderModel):
 
     def _load_model(self) -> None:
         """Download (if needed) and load the MLX reranker. Runs in a thread."""
-        import importlib.util
         import os
-        import sys
 
         from huggingface_hub import snapshot_download
+
+        from .jina_mlx_reranker import MLXReranker
 
         model_path = self.model_path
         if model_path is None:
             logger.info(f"Reranker: downloading {self.HF_REPO_ID} from HuggingFace Hub...")
             model_path = snapshot_download(repo_id=self.HF_REPO_ID)
 
-        # Import MLXReranker directly from the repo's own rerank.py
-        rerank_py = os.path.join(model_path, "rerank.py")
-        spec = importlib.util.spec_from_file_location("jina_reranker_v3_mlx", rerank_py)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["jina_reranker_v3_mlx"] = module
-        spec.loader.exec_module(module)
-
         logger.info(f"Reranker: loading jina-reranker-v3-mlx from {model_path}")
-        self._reranker = module.MLXReranker(
+        self._reranker = MLXReranker(
             model_path=model_path,
             projector_path=os.path.join(model_path, "projector.safetensors"),
         )
