@@ -410,7 +410,7 @@ Supported OpenAI embedding dimensions:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HINDSIGHT_API_RERANKER_PROVIDER` | Provider: `local`, `tei`, `cohere`, `zeroentropy`, `flashrank`, `litellm`, `litellm-sdk`, or `rrf` | `local` |
+| `HINDSIGHT_API_RERANKER_PROVIDER` | Provider: `local`, `tei`, `cohere`, `zeroentropy`, `flashrank`, `litellm`, `litellm-sdk`, `jina-mlx`, or `rrf` | `local` |
 | `HINDSIGHT_API_RERANKER_LOCAL_MODEL` | Model for local provider | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
 | `HINDSIGHT_API_RERANKER_LOCAL_MAX_CONCURRENT` | Max concurrent local reranking (prevents CPU thrashing under load) | `4` |
 | `HINDSIGHT_API_RERANKER_LOCAL_TRUST_REMOTE_CODE` | Allow loading models with custom code (security risk, disabled by default) | `false` |
@@ -430,6 +430,7 @@ Supported OpenAI embedding dimensions:
 | `HINDSIGHT_API_RERANKER_ZEROENTROPY_MODEL` | ZeroEntropy rerank model (`zerank-2`, `zerank-2-small`) | `zerank-2` |
 | `HINDSIGHT_API_RERANKER_FLASHRANK_MODEL` | FlashRank model for fast CPU-based reranking | `ms-marco-MiniLM-L-12-v2` |
 | `HINDSIGHT_API_RERANKER_FLASHRANK_CACHE_DIR` | Cache directory for FlashRank models | System default |
+| `HINDSIGHT_API_RERANKER_JINA_MLX_MODEL_PATH` | Local path to downloaded `jina-reranker-v3-mlx` model (auto-downloads from HuggingFace if unset) | - |
 
 ```bash
 # Local (default) - uses SentenceTransformers CrossEncoder
@@ -472,6 +473,11 @@ export HINDSIGHT_API_RERANKER_LITELLM_MODEL=cohere/rerank-english-v3.0  # or voy
 export HINDSIGHT_API_RERANKER_PROVIDER=litellm-sdk
 export HINDSIGHT_API_RERANKER_LITELLM_SDK_API_KEY=your-deepinfra-api-key
 export HINDSIGHT_API_RERANKER_LITELLM_SDK_MODEL=deepinfra/Qwen3-reranker-8B  # or cohere/rerank-english-v3.0, etc.
+
+# Jina MLX - Apple Silicon native reranking (no GPU/cloud required)
+# Requires: pip install mlx mlx-lm safetensors
+# Model (jinaai/jina-reranker-v3-mlx, ~1.2 GB) is downloaded automatically on first use.
+export HINDSIGHT_API_RERANKER_PROVIDER=jina-mlx
 ```
 
 #### LiteLLM Proxy vs SDK
@@ -487,6 +493,33 @@ Both support the same providers:
 - **Voyage AI** (`voyage/rerank-2`)
 - **Jina AI** (`jina_ai/jina-reranker-v2`)
 - **AWS Bedrock** (`bedrock/...`)
+
+#### Jina MLX (Apple Silicon)
+
+The `jina-mlx` provider runs [`jinaai/jina-reranker-v3-mlx`](https://huggingface.co/jinaai/jina-reranker-v3-mlx) — a 0.6B multilingual listwise reranker — directly on Apple Silicon via the [MLX](https://github.com/ml-explore/mlx) framework. No GPU server or cloud API required.
+
+**Requirements:** Install the extra dependencies once:
+
+```bash
+pip install mlx mlx-lm safetensors
+```
+
+The model (~1.2 GB) is downloaded from HuggingFace Hub automatically on first startup and cached locally.
+
+**Benchmark results on Apple Silicon (M-series):**
+
+| Batch size | Latency |
+|-----------|---------|
+| 1 doc | ~32 ms |
+| 5 docs | ~45 ms |
+| 10 docs | ~60 ms |
+| 20 docs | ~94 ms |
+
+Latency scales sub-linearly because all documents are processed in a single forward pass (listwise ranking). Multilingual by default — no separate multilingual model needed.
+
+:::note License
+`jina-reranker-v3-mlx` is licensed under CC BY-NC 4.0. Contact Jina AI for commercial usage.
+:::
 
 ### Authentication
 
