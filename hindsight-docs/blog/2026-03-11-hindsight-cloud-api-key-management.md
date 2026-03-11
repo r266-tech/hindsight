@@ -23,7 +23,7 @@ hide_table_of_contents: true
 
 If you're running a multi-tenant setup — one memory bank per customer, per agent, or per environment — you no longer need to manage keys through the dashboard. Your application can provision scoped keys on the fly, rotate them on a schedule, and revoke them instantly when access should end.
 
-Combined with [bank-scoped API keys](/blog/2026/03/09/hindsight-document-upload#what-else-is-new) (released March 3), this gives you a complete least-privilege key hierarchy: a parent key with Key Creator capability manages child keys that are each locked to specific banks.
+Combined with [bank-scoped API keys](/blog/2026/03/09/hindsight-document-upload#what-else-is-new) (released March 9), this gives you a complete least-privilege key hierarchy: a parent key with Key Creator capability manages child keys that are each locked to specific banks.
 
 ## Get Started
 
