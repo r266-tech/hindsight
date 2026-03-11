@@ -1058,7 +1058,7 @@ class JinaMLXCrossEncoder(CrossEncoderModel):
     optimized for Apple Silicon via the MLX framework. No transformers/PyTorch dependency.
 
     The model is downloaded automatically from HuggingFace Hub on first use.
-    Requires: mlx, mlx-lm, safetensors (install with: pip install mlx mlx-lm safetensors)
+    Requires: mlx>=0.31.0, mlx-lm>=0.31.1, safetensors>=0.6.2
     """
 
     HF_REPO_ID = "jinaai/jina-reranker-v3-mlx"
@@ -1086,7 +1086,7 @@ class JinaMLXCrossEncoder(CrossEncoderModel):
         except ImportError:
             raise ImportError(
                 "mlx and mlx-lm are required for JinaMLXCrossEncoder. "
-                "Install with: pip install mlx mlx-lm safetensors"
+                "Install with: pip install mlx>=0.31.0 mlx-lm>=0.31.1 safetensors>=0.6.2"
             )
 
         loop = asyncio.get_event_loop()
@@ -1094,6 +1094,10 @@ class JinaMLXCrossEncoder(CrossEncoderModel):
 
     def _load_model(self) -> None:
         """Download (if needed) and load the MLX reranker. Runs in a thread."""
+        import importlib.util
+        import os
+        import sys
+
         from huggingface_hub import snapshot_download
 
         model_path = self.model_path
@@ -1101,11 +1105,18 @@ class JinaMLXCrossEncoder(CrossEncoderModel):
             logger.info(f"Reranker: downloading {self.HF_REPO_ID} from HuggingFace Hub...")
             model_path = snapshot_download(repo_id=self.HF_REPO_ID)
 
-        import os
+        # Import MLXReranker directly from the repo's own rerank.py
+        rerank_py = os.path.join(model_path, "rerank.py")
+        spec = importlib.util.spec_from_file_location("jina_reranker_v3_mlx", rerank_py)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["jina_reranker_v3_mlx"] = module
+        spec.loader.exec_module(module)
 
-        projector_path = os.path.join(model_path, "projector.safetensors")
         logger.info(f"Reranker: loading jina-reranker-v3-mlx from {model_path}")
-        self._reranker = _MLXReranker(model_path=model_path, projector_path=projector_path)
+        self._reranker = module.MLXReranker(
+            model_path=model_path,
+            projector_path=os.path.join(model_path, "projector.safetensors"),
+        )
         logger.info("Reranker: jina-mlx provider initialized")
 
     def _predict_sync(self, pairs: list[tuple[str, str]]) -> list[float]:
@@ -1135,126 +1146,6 @@ class JinaMLXCrossEncoder(CrossEncoderModel):
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._predict_sync, pairs)
-
-
-# ---------------------------------------------------------------------------
-# Embedded MLX reranker implementation (adapted from jinaai/jina-reranker-v3-mlx)
-# ---------------------------------------------------------------------------
-
-class _MLPProjector:
-    """MLP projector to project hidden states to embedding space."""
-
-    def __init__(self):
-        import mlx.nn as nn
-        self.linear1 = nn.Linear(1024, 512, bias=False)
-        self.linear2 = nn.Linear(512, 512, bias=False)
-
-    def __call__(self, x):
-        import mlx.nn as nn
-        x = self.linear1(x)
-        x = nn.relu(x)
-        x = self.linear2(x)
-        return x
-
-
-def _load_mlx_projector(projector_path: str) -> _MLPProjector:
-    import mlx.core as mx
-    from safetensors import safe_open
-
-    projector = _MLPProjector()
-    with safe_open(projector_path, framework="numpy") as f:
-        projector.linear1.weight = mx.array(f.get_tensor("linear1.weight"))
-        projector.linear2.weight = mx.array(f.get_tensor("linear2.weight"))
-    return projector
-
-
-class _MLXReranker:
-    """MLX-based jina-reranker-v3 (embedded implementation)."""
-
-    _SPECIAL_TOKENS = {
-        "query_embed_token": "<|rerank_token|>",
-        "doc_embed_token": "<|embed_token|>",
-    }
-    _DOC_TOKEN_ID = 151670
-    _QUERY_TOKEN_ID = 151671
-
-    def __init__(self, model_path: str, projector_path: str):
-        from mlx_lm import load
-        self.model, self.tokenizer = load(model_path)
-        self.model.eval()
-        self.projector = _load_mlx_projector(projector_path)
-
-    def _format_prompt(self, query: str, docs: list[str]) -> str:
-        def sanitize(text: str) -> str:
-            for tok in self._SPECIAL_TOKENS.values():
-                text = text.replace(tok, "")
-            return text
-
-        query = sanitize(query)
-        docs = [sanitize(d) for d in docs]
-        doc_token = self._SPECIAL_TOKENS["doc_embed_token"]
-        query_token = self._SPECIAL_TOKENS["query_embed_token"]
-
-        prefix = (
-            "<|im_start|>system\n"
-            "You are a search relevance expert who can determine a ranking of the passages based on how relevant they are to the query. "
-            "If the query is a question, how relevant a passage is depends on how well it answers the question. "
-            "If not, try to analyze the intent of the query and assess how well each passage satisfies the intent. "
-            "If an instruction is provided, you should follow the instruction when determining the ranking."
-            "<|im_end|>\n<|im_start|>user\n"
-        )
-        suffix = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
-
-        body = (
-            f"I will provide you with {len(docs)} passages, each indicated by a numerical identifier. "
-            f"Rank the passages based on their relevance to query: {query}\n"
-        )
-        body += "\n".join(f'<passage id="{i}">\n{doc}{doc_token}\n</passage>' for i, doc in enumerate(docs))
-        body += f"\n<query>\n{query}{query_token}\n</query>"
-        return prefix + body + suffix
-
-    def rerank(self, query: str, documents: list[str], top_n: int | None = None) -> list[dict]:
-        import mlx.core as mx
-        import numpy as np
-
-        prompt = self._format_prompt(query, documents)
-        input_ids = self.tokenizer.encode(prompt)
-        hidden_states = self.model.model([input_ids])[0]  # [seq_len, hidden_size]
-
-        input_ids_np = np.array(input_ids)
-        query_positions = np.where(input_ids_np == self._QUERY_TOKEN_ID)[0]
-        doc_positions = np.where(input_ids_np == self._DOC_TOKEN_ID)[0]
-
-        if len(query_positions) == 0:
-            raise ValueError("Query embed token not found in prompt")
-        if len(doc_positions) == 0:
-            raise ValueError("Document embed tokens not found in prompt")
-
-        query_hidden = mx.expand_dims(hidden_states[int(query_positions[0])], axis=0)
-        doc_hidden = mx.stack([hidden_states[int(p)] for p in doc_positions])
-
-        query_emb = self.projector(query_hidden)  # [1, 512]
-        doc_emb = self.projector(doc_hidden)       # [num_docs, 512]
-
-        query_exp = mx.broadcast_to(mx.expand_dims(query_emb, 0), (1, len(documents), 512))
-        doc_exp = mx.expand_dims(doc_emb, 0)
-
-        scores = mx.sum(doc_exp * query_exp, axis=-1) / (
-            mx.sqrt(mx.sum(doc_exp * doc_exp, axis=-1))
-            * mx.sqrt(mx.sum(query_exp * query_exp, axis=-1))
-        )  # [1, num_docs]
-        scores_np = np.array(scores[0])
-
-        order = np.argsort(scores_np)[::-1]
-        n = min(top_n, len(documents)) if top_n is not None else len(documents)
-        return [
-            {
-                "document": documents[order[i]],
-                "relevance_score": float(scores_np[order[i]]),
-                "index": int(order[i]),
-            }
-            for i in range(n)
-        ]
 
 
 def create_cross_encoder_from_env() -> CrossEncoderModel:
