@@ -8,28 +8,28 @@ Hindsight can be deployed in several ways depending on your infrastructure and r
 
 ## Prerequisites
 
-### PostgreSQL with pgvector
+### PostgreSQL
 
-Hindsight requires PostgreSQL with the **pgvector** extension for vector similarity search.
+Hindsight requires PostgreSQL 14+ with a vector extension for similarity search. The supported extensions are:
+
+- **pgvector** (default)
+- **pgvectorscale**
+- **vchord**
+
+Configure which one to use with `HINDSIGHT_API_VECTOR_EXTENSION`. See [Configuration](./configuration) for details.
 
 **By default**, Hindsight uses **pg0** — an embedded PostgreSQL that runs locally on your machine. This is convenient for development but **not recommended for production**.
 
-**For production**, use an external PostgreSQL with pgvector:
+**For production**, use an external PostgreSQL with one of the supported vector extensions:
 - **Supabase** — Managed PostgreSQL with pgvector built-in
 - **Neon** — Serverless PostgreSQL with pgvector
-- **Azure Database for PostgreSQL** — With pgvector and pg_diskann (DiskANN) support
+- **Azure Database for PostgreSQL** — With pgvector and pgvectorscale support
 - **AWS RDS** / **Cloud SQL** — With pgvector extension enabled
-- **Self-hosted** — PostgreSQL 14+ with pgvector installed
+- **Self-hosted** — PostgreSQL 14+ with your preferred vector extension
 
 ### LLM Provider
 
-You need an LLM API key for fact extraction, entity resolution, and answer generation:
-
-- **Groq** (recommended): Fast inference with `gpt-oss-20b`
-- **OpenAI**: GPT-4o, GPT-4o-mini
-- **Ollama**: Run models locally
-
-See [Models](./models) for detailed comparison and configuration.
+You need an LLM API key for fact extraction, entity resolution, and answer generation. See [Models](./models) for supported providers, model recommendations, and configuration.
 
 ---
 
@@ -53,10 +53,10 @@ docker run --rm -it --pull always -p 8888:8888 -p 9999:9999 \
 
 ### Docker Image Variants
 
-| Variant | Size (AMD64) | Size (ARM64) | Local ML | When to use |
-|---------|--------------|--------------|----------|-------------|
-| **Full** (`latest`) | ~9 GB | ~3.7 GB | Yes | Default. Works out of the box with no external services. |
-| **Slim** (`slim`) | ~500 MB | ~500 MB | No | Cloud deployments, managed embedding/reranking (OpenAI, Cohere, TEI), or Kubernetes where image size matters. Requires [external providers](./configuration#embeddings). |
+| Variant | Size (AMD64) | Size (ARM64) | When to use |
+|---------|--------------|--------------|-------------|
+| **Full** (`latest`) | ~9 GB | ~3.7 GB | Default. Works out of the box with no external services except the LLM. |
+| **Slim** (`slim`) | ~500 MB | ~500 MB | Use when you already rely on external services for embeddings and reranking (OpenAI, Cohere, TEI). Significantly smaller image, faster deploys. Requires [external providers](./configuration#embeddings). |
 
 The slim image corresponds to the [`hindsight-api-slim`](#package-variants) pip package. See [Configuration](./configuration#embeddings) for external provider options.
 
@@ -71,7 +71,7 @@ ghcr.io/vectorize-io/hindsight:0.4.9-slim    # Slim, specific version
 
 # API only
 ghcr.io/vectorize-io/hindsight-api:latest
-ghcr.io/vectorize-io/hindsight-api:slim
+ghcr.io/vectorize-io/hindsight-api:latest-slim
 
 # Control Plane only
 ghcr.io/vectorize-io/hindsight-control-plane:latest
@@ -126,43 +126,16 @@ See the [Helm chart values.yaml](https://github.com/vectorize-io/hindsight/tree/
 
 ## Bare Metal (pip)
 
-**Best for**: Custom deployments, integration into existing Python applications
-
-### Package Variants
-
-Hindsight publishes four Python packages. Choose the one that fits your setup:
-
-| Package | Local ML (torch, etc.) | Embedded DB (pg0) | Use case |
-|---------|------------------------|-------------------|----------|
-| **`hindsight-all`** | Yes | Yes | Full install — works out of the box |
-| **`hindsight-all-slim`** | No | No | Lightweight — requires external providers |
-| **`hindsight-api`** | Yes | Yes | API server only, no Python convenience wrapper |
-| **`hindsight-api-slim`** | No | No | API server with optional extras |
-
-`hindsight-api-slim` supports the following optional extras:
-
-```bash
-pip install hindsight-api-slim                    # No local ML, no embedded DB
-pip install "hindsight-api-slim[local-ml]"        # Adds torch, sentence-transformers, flashrank, mlx
-pip install "hindsight-api-slim[embedded-db]"     # Adds pg0 embedded PostgreSQL
-pip install "hindsight-api-slim[all]"             # All extras (equivalent to hindsight-api)
-```
-
-:::note Using slim packages
-When using `hindsight-all-slim` or `hindsight-api-slim` without extras, configure external providers:
-```bash
-export HINDSIGHT_API_EMBEDDINGS_PROVIDER=openai
-export HINDSIGHT_API_RERANKER_PROVIDER=cohere
-export HINDSIGHT_API_DATABASE_URL=postgresql://user:pass@host:5432/db
-```
-See [Configuration](./configuration#embeddings) for all provider options.
-:::
+**Best for**: Running Hindsight as a standalone service on a host machine.
 
 ### Install
 
 ```bash
-pip install hindsight-all
+pip install hindsight-api        # Full — works out of the box
+pip install hindsight-api-slim   # Slim — requires external services for embeddings, reranking, and the database
 ```
+
+When using `hindsight-api-slim`, you must configure external providers for all model operations. See [Configuration](./configuration#embeddings) for details.
 
 ### Run with Embedded Database
 
@@ -231,6 +204,42 @@ npx @vectorize-io/hindsight-control-plane
 # Production deployment
 PORT=80 HINDSIGHT_CP_DATAPLANE_API_URL=https://api.hindsight.io npx @vectorize-io/hindsight-control-plane
 ```
+
+---
+
+## Embedded in a Python Application
+
+**Best for**: Using Hindsight programmatically from Python without running a separate server process.
+
+```bash
+pip install hindsight-all        # Full — works out of the box
+pip install hindsight-all-slim   # Slim — requires external services for embeddings, reranking, and the database
+```
+
+`hindsight-all` supports two modes of embedding:
+
+**In-process** (`HindsightServer`): the server runs in a background thread inside your application. Best when you want the tightest integration and are already managing your own process lifecycle.
+
+```python
+from hindsight import HindsightServer, HindsightClient
+
+with HindsightServer(llm_provider="openai", llm_api_key="sk-xxx") as server:
+    client = HindsightClient(base_url=server.url)
+    client.retain(bank_id="alice", content="Alice prefers concise answers.")
+    results = client.recall(bank_id="alice", query="How should I respond to Alice?")
+```
+
+**Managed subprocess** (`HindsightEmbedded`): the server runs as a background daemon process, shared across multiple Python processes or sessions. The daemon starts on first use and shuts down automatically after an idle timeout.
+
+```python
+from hindsight import HindsightEmbedded
+
+client = HindsightEmbedded(llm_provider="openai", llm_api_key="sk-xxx")
+client.retain(bank_id="alice", content="Alice prefers concise answers.")
+results = client.recall(bank_id="alice", query="How should I respond to Alice?")
+```
+
+See the [Python SDK](../sdks/python.md) for the full API reference.
 
 ---
 

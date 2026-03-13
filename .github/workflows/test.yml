@@ -29,7 +29,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Build hindsight-api
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv build
 
   build-typescript-client:
@@ -249,11 +249,11 @@ jobs:
         python-version-file: ".python-version"
 
     - name: Build API
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv build
 
     - name: Install API dependencies
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv sync --frozen --no-install-project --index-strategy unsafe-best-match
 
     - name: Cache HuggingFace models
@@ -265,7 +265,7 @@ jobs:
           ${{ runner.os }}-huggingface-
 
     - name: Pre-download models
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: |
         uv run python -c "
         from sentence_transformers import SentenceTransformer, CrossEncoder
@@ -444,11 +444,11 @@ jobs:
         python-version-file: ".python-version"
 
     - name: Build API
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv build
 
     - name: Install dependencies
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv sync --frozen --extra test --no-install-project --index-strategy unsafe-best-match
 
     - name: Cache HuggingFace models
@@ -460,7 +460,7 @@ jobs:
           ${{ runner.os }}-huggingface-
 
     - name: Pre-download models
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: |
         uv run python -c "
         from sentence_transformers import SentenceTransformer, CrossEncoder
@@ -472,7 +472,7 @@ jobs:
         "
 
     - name: Run tests
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv run pytest tests -v
 
   test-python-client:
@@ -507,7 +507,7 @@ jobs:
         python-version-file: ".python-version"
 
     - name: Build API
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv build
 
     - name: Build Python client
@@ -519,7 +519,7 @@ jobs:
       run: uv sync --frozen --extra test --index-strategy unsafe-best-match
 
     - name: Install API dependencies
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv sync --frozen --no-install-project --index-strategy unsafe-best-match
 
     - name: Cache HuggingFace models
@@ -531,7 +531,7 @@ jobs:
           ${{ runner.os }}-huggingface-
 
     - name: Pre-download models
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: |
         uv run python -c "
         from sentence_transformers import SentenceTransformer, CrossEncoder
@@ -615,11 +615,11 @@ jobs:
         node-version: '20'
 
     - name: Build API
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv build
 
     - name: Install API dependencies
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv sync --frozen --no-install-project --index-strategy unsafe-best-match
 
     - name: Install TypeScript client dependencies
@@ -639,7 +639,7 @@ jobs:
           ${{ runner.os }}-huggingface-
 
     - name: Pre-download models
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: |
         uv run python -c "
         from sentence_transformers import SentenceTransformer, CrossEncoder
@@ -754,11 +754,11 @@ jobs:
         key: ${{ runner.os }}-cargo-client-${{ hashFiles('hindsight-clients/rust/Cargo.lock') }}
 
     - name: Build API
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv build
 
     - name: Install API dependencies
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv sync --frozen --no-install-project --index-strategy unsafe-best-match
 
     - name: Cache HuggingFace models
@@ -770,7 +770,7 @@ jobs:
           ${{ runner.os }}-huggingface-
 
     - name: Pre-download models
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: |
         uv run python -c "
         from sentence_transformers import SentenceTransformer, CrossEncoder
@@ -855,11 +855,11 @@ jobs:
         cache-dependency-path: hindsight-clients/go/go.sum
 
     - name: Build API
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv build
 
     - name: Install API dependencies
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv sync --frozen --no-install-project --index-strategy unsafe-best-match
 
     - name: Cache HuggingFace models
@@ -871,7 +871,7 @@ jobs:
           ${{ runner.os }}-huggingface-
 
     - name: Pre-download models
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: |
         uv run python -c "
         from sentence_transformers import SentenceTransformer, CrossEncoder
@@ -959,12 +959,12 @@ jobs:
         node-version: '22'
 
     - name: Build API
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv build
 
     - name: Install API dependencies
-      working-directory: ./hindsight-api
-      run: uv sync --frozen --no-install-project --index-strategy unsafe-best-match
+      working-directory: ./hindsight-api-slim
+      run: uv sync --frozen --no-install-project --extra embedded-db --index-strategy unsafe-best-match
 
     - name: Install embed dependencies
       working-directory: ./hindsight-embed
@@ -979,7 +979,7 @@ jobs:
           ${{ runner.os }}-huggingface-
 
     - name: Pre-download models
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: |
         uv run python -c "
         from sentence_transformers import SentenceTransformer, CrossEncoder
@@ -1061,11 +1061,11 @@ jobs:
         python-version-file: ".python-version"
 
     - name: Build API
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv build
 
     - name: Install API dependencies
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv sync --frozen --no-install-project --index-strategy unsafe-best-match
 
     - name: Install integration test dependencies
@@ -1081,7 +1081,7 @@ jobs:
           ${{ runner.os }}-huggingface-
 
     - name: Pre-download models
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: |
         uv run python -c "
         from sentence_transformers import SentenceTransformer, CrossEncoder
@@ -1299,11 +1299,11 @@ jobs:
         python-version-file: ".python-version"
 
     - name: Build hindsight-all
-      working-directory: ./hindsight
+      working-directory: ./hindsight-all
       run: uv build
 
     - name: Install dependencies
-      working-directory: ./hindsight
+      working-directory: ./hindsight-all
       run: uv sync --frozen --extra test --index-strategy unsafe-best-match
 
     - name: Cache HuggingFace models
@@ -1316,7 +1316,7 @@ jobs:
           ${{ runner.os }}-huggingface-
 
     - name: Run unit tests
-      working-directory: ./hindsight
+      working-directory: ./hindsight-all
       run: uv run pytest tests/ -v
 
   test-doc-examples:
@@ -1384,7 +1384,7 @@ jobs:
         cache-dependency-path: package-lock.json
 
     - name: Build and install API
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: |
         uv build
         uv sync --frozen --no-install-project --index-strategy unsafe-best-match
@@ -1409,7 +1409,7 @@ jobs:
           ${{ runner.os }}-huggingface-
 
     - name: Pre-download models
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: |
         uv run python -c "
         from sentence_transformers import SentenceTransformer, CrossEncoder
@@ -1506,11 +1506,11 @@ jobs:
       run: uv sync --frozen --extra test --index-strategy unsafe-best-match
 
     - name: Install current hindsight-api
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: uv sync --frozen --index-strategy unsafe-best-match
 
     - name: Pre-download models
-      working-directory: ./hindsight-api
+      working-directory: ./hindsight-api-slim
       run: |
         uv run python -c "
         from sentence_transformers import SentenceTransformer, CrossEncoder
