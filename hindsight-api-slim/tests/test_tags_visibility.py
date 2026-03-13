@@ -1286,3 +1286,218 @@ async def test_list_memories_includes_tags(api_client, test_bank_id):
     assert set(memory_item["tags"]) == set(tags), (
         f"All {len(tags)} tags should be returned, got: {memory_item['tags']}"
     )
+
+
+# ============================================================================
+# Integration Tests for tag_groups compound filtering
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_tag_groups_validation_rejects_both_tags_and_tag_groups(api_client, test_bank_id):
+    """Passing both tags and tag_groups must be rejected (422)."""
+    response = await api_client.post(
+        f"/v1/default/banks/{test_bank_id}/memories/recall",
+        json={
+            "query": "anything",
+            "tags": ["user:alice"],
+            "tag_groups": [{"tags": ["user:alice"], "match": "any_strict"}],
+        },
+    )
+    assert response.status_code == 422, (
+        f"Expected 422 when both tags and tag_groups are set, got {response.status_code}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_tag_groups_leaf_and_filter(api_client):
+    """
+    Two leaf groups at top level (implicit AND): step filter AND user scope.
+
+    Retain:
+      - Memory A: tags=[step:5, user:alice]   ← should match
+      - Memory B: tags=[step:5, user:bob]     ← excluded (wrong user)
+      - Memory C: tags=[step:9, user:alice]   ← excluded (wrong step)
+
+    tag_groups = [{tags:[step:5], match:any_strict}, {tags:[user:alice], match:all_strict}]
+    Expected: only A.
+    """
+    bank_id = f"tg_and_{datetime.now().timestamp()}"
+
+    retain = await api_client.post(
+        f"/v1/default/banks/{bank_id}/memories",
+        json={
+            "items": [
+                {"content": "Alice completed step 5 of the onboarding process.", "tags": ["step:5", "user:alice"]},
+                {"content": "Bob completed step 5 of the onboarding process.", "tags": ["step:5", "user:bob"]},
+                {"content": "Alice completed step 9 of the onboarding process.", "tags": ["step:9", "user:alice"]},
+            ]
+        },
+    )
+    assert retain.status_code == 200
+
+    response = await api_client.post(
+        f"/v1/default/banks/{bank_id}/memories/recall",
+        json={
+            "query": "onboarding step completion",
+            "budget": "mid",
+            "tag_groups": [
+                {"tags": ["step:5"], "match": "any_strict"},
+                {"tags": ["user:alice"], "match": "all_strict"},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    texts = [r["text"] for r in response.json()["results"]]
+
+    assert any("Alice" in t and "step 5" in t for t in texts), "Should find Alice step:5 memory"
+    assert not any("Bob" in t for t in texts), "Should NOT find Bob (wrong user)"
+    assert not any("step 9" in t for t in texts), "Should NOT find step 9 (wrong step)"
+
+
+@pytest.mark.asyncio
+async def test_tag_groups_or_compound(api_client):
+    """
+    OR compound: match user:alice OR user:bob, but not user:carol.
+
+    Retain:
+      - Memory A: tags=[user:alice]
+      - Memory B: tags=[user:bob]
+      - Memory C: tags=[user:carol]
+
+    tag_groups = [{or: [{tags:[user:alice]}, {tags:[user:bob]}]}]
+    Expected: A and B, not C.
+    """
+    bank_id = f"tg_or_{datetime.now().timestamp()}"
+
+    retain = await api_client.post(
+        f"/v1/default/banks/{bank_id}/memories",
+        json={
+            "items": [
+                {"content": "Alice is a machine learning engineer.", "tags": ["user:alice"]},
+                {"content": "Bob is a backend software engineer.", "tags": ["user:bob"]},
+                {"content": "Carol is a product manager.", "tags": ["user:carol"]},
+            ]
+        },
+    )
+    assert retain.status_code == 200
+
+    response = await api_client.post(
+        f"/v1/default/banks/{bank_id}/memories/recall",
+        json={
+            "query": "what are the engineers working on",
+            "budget": "mid",
+            "tag_groups": [
+                {"or": [
+                    {"tags": ["user:alice"], "match": "any_strict"},
+                    {"tags": ["user:bob"], "match": "any_strict"},
+                ]},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    texts = [r["text"] for r in response.json()["results"]]
+
+    assert any("Alice" in t for t in texts), "Should find Alice (in OR)"
+    assert any("Bob" in t for t in texts), "Should find Bob (in OR)"
+    assert not any("Carol" in t for t in texts), "Should NOT find Carol (not in OR)"
+
+
+@pytest.mark.asyncio
+async def test_tag_groups_not_compound(api_client):
+    """
+    NOT compound: user:alice AND NOT archived.
+
+    Retain:
+      - Memory A: tags=[user:alice]            ← should match
+      - Memory B: tags=[user:alice, archived]  ← excluded (archived)
+      - Memory C: tags=[user:bob]              ← excluded (wrong user)
+
+    tag_groups = [{tags:[user:alice], match:any_strict}, {not: {tags:[archived], match:any_strict}}]
+    Expected: only A.
+    """
+    bank_id = f"tg_not_{datetime.now().timestamp()}"
+
+    retain = await api_client.post(
+        f"/v1/default/banks/{bank_id}/memories",
+        json={
+            "items": [
+                {"content": "Alice joined the data science team this quarter.", "tags": ["user:alice"]},
+                {"content": "Alice left the previous analytics project last year.", "tags": ["user:alice", "archived"]},
+                {"content": "Bob joined the platform engineering team.", "tags": ["user:bob"]},
+            ]
+        },
+    )
+    assert retain.status_code == 200
+
+    response = await api_client.post(
+        f"/v1/default/banks/{bank_id}/memories/recall",
+        json={
+            "query": "team membership",
+            "budget": "mid",
+            "tag_groups": [
+                {"tags": ["user:alice"], "match": "any_strict"},
+                {"not": {"tags": ["archived"], "match": "any_strict"}},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    texts = [r["text"] for r in response.json()["results"]]
+
+    assert any("data science" in t for t in texts), "Should find Alice's active memory"
+    assert not any("analytics project" in t for t in texts), "Should NOT find archived memory"
+    assert not any("Bob" in t for t in texts), "Should NOT find Bob (wrong user)"
+
+
+@pytest.mark.asyncio
+async def test_tag_groups_nested_and_containing_or(api_client):
+    """
+    Nested: user:alice AND (step:5 OR step:8).
+
+    Retain:
+      - Memory A: tags=[user:alice, step:5]   ← should match
+      - Memory B: tags=[user:alice, step:8]   ← should match
+      - Memory C: tags=[user:alice, step:9]   ← excluded (wrong step)
+      - Memory D: tags=[user:bob,   step:5]   ← excluded (wrong user)
+
+    tag_groups = [{and: [{tags:[user:alice]}, {or:[{tags:[step:5]},{tags:[step:8]}]}]}]
+    Expected: A and B only.
+    """
+    bank_id = f"tg_nested_{datetime.now().timestamp()}"
+
+    retain = await api_client.post(
+        f"/v1/default/banks/{bank_id}/memories",
+        json={
+            "items": [
+                {"content": "Alice passed the verification at step 5.", "tags": ["user:alice", "step:5"]},
+                {"content": "Alice passed the verification at step 8.", "tags": ["user:alice", "step:8"]},
+                {"content": "Alice passed the verification at step 9.", "tags": ["user:alice", "step:9"]},
+                {"content": "Bob passed the verification at step 5.", "tags": ["user:bob", "step:5"]},
+            ]
+        },
+    )
+    assert retain.status_code == 200
+
+    response = await api_client.post(
+        f"/v1/default/banks/{bank_id}/memories/recall",
+        json={
+            "query": "verification step completion",
+            "budget": "mid",
+            "tag_groups": [
+                {"and": [
+                    {"tags": ["user:alice"], "match": "all_strict"},
+                    {"or": [
+                        {"tags": ["step:5"], "match": "any_strict"},
+                        {"tags": ["step:8"], "match": "any_strict"},
+                    ]},
+                ]},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    texts = [r["text"] for r in response.json()["results"]]
+
+    assert any("Alice" in t and "step 5" in t for t in texts), "Should find Alice step:5"
+    assert any("Alice" in t and "step 8" in t for t in texts), "Should find Alice step:8"
+    assert not any("step 9" in t for t in texts), "Should NOT find step 9"
+    assert not any("Bob" in t for t in texts), "Should NOT find Bob"

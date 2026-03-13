@@ -34,7 +34,7 @@ def _parse_metadata(metadata: Any) -> dict[str, Any]:
 
 from typing import Callable
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from hindsight_api import MemoryEngine
 
@@ -168,6 +168,12 @@ class RecallRequest(BaseModel):
         description="Compound tag filter using boolean groups. Groups in the list are AND-ed. "
         "Each group is a leaf {tags, match} or compound {and: [...]}, {or: [...]}, {not: ...}.",
     )
+
+    @model_validator(mode="after")
+    def validate_tags_exclusive(self) -> "RecallRequest":
+        if self.tags is not None and self.tag_groups is not None:
+            raise ValueError("'tags' and 'tag_groups' are mutually exclusive. Use 'tag_groups' for compound filtering.")
+        return self
 
 
 class RecallResult(BaseModel):
@@ -649,6 +655,12 @@ class ReflectRequest(BaseModel):
         description="Compound tag filter using boolean groups. Groups in the list are AND-ed. "
         "Each group is a leaf {tags, match} or compound {and: [...]}, {or: [...]}, {not: ...}.",
     )
+
+    @model_validator(mode="after")
+    def validate_tags_exclusive(self) -> "ReflectRequest":
+        if self.tags is not None and self.tag_groups is not None:
+            raise ValueError("'tags' and 'tag_groups' are mutually exclusive. Use 'tag_groups' for compound filtering.")
+        return self
 
 
 class ReflectFact(BaseModel):
