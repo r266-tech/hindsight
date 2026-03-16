@@ -452,7 +452,7 @@ export function BankConfigView() {
           />
           <FieldRow
             label="Extraction Mode"
-            description="How aggressively to extract facts: concise (default, selective), verbose (capture everything), custom (write your own extraction rules)"
+            description="How aggressively to extract facts: concise (default, selective), verbose (capture everything), verbatim (store chunks as-is, still extract entities/time), custom (write your own extraction rules)"
           >
             <Select
               value={retainEdits.retain_extraction_mode ?? ""}
@@ -464,7 +464,7 @@ export function BankConfigView() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {["concise", "verbose", "custom"].map((opt) => (
+                {["concise", "verbose", "verbatim", "custom"].map((opt) => (
                   <SelectItem key={opt} value={opt}>
                     {opt}
                   </SelectItem>

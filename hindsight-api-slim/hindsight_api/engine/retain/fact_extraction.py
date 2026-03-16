@@ -552,6 +552,27 @@ CUSTOM_FACT_EXTRACTION_PROMPT = _BASE_FACT_EXTRACTION_PROMPT.format(
     examples="",  # No examples for custom mode
 )
 
+# Verbatim mode: preserve the original text exactly, but still extract metadata
+_VERBATIM_GUIDELINES = """══════════════════════════════════════════════════════════════════════════
+VERBATIM MODE — Index content as-is
+══════════════════════════════════════════════════════════════════════════
+
+Your task is NOT to summarize or rewrite. You must index this content for retrieval.
+
+RULES:
+- Produce EXACTLY ONE fact entry per input chunk.
+- In the "what" field, copy the FULL original text verbatim, word for word. Do not shorten, paraphrase, or omit anything.
+- Still extract all entities (people, places, organizations, objects, concepts).
+- Still extract temporal information (occurred_start, occurred_end, fact_kind).
+- Still extract location (where) and people (who) fields.
+- fact_type: use "world" unless the content is clearly an interaction with the assistant."""
+
+VERBATIM_FACT_EXTRACTION_PROMPT = _BASE_FACT_EXTRACTION_PROMPT.format(
+    retain_mission_section="{retain_mission_section}",
+    extraction_guidelines=_VERBATIM_GUIDELINES,
+    examples="",
+)
+
 
 # Verbose extraction prompt - detailed, comprehensive facts (legacy mode)
 VERBOSE_FACT_EXTRACTION_PROMPT = """Extract facts from text into structured format with FIVE required dimensions - BE EXTREMELY DETAILED.
@@ -770,6 +791,10 @@ def _build_extraction_prompt_and_schema(config) -> tuple[str, type]:
             )
     elif extraction_mode == "verbose":
         prompt = VERBOSE_FACT_EXTRACTION_PROMPT
+    elif extraction_mode == "verbatim":
+        prompt = VERBATIM_FACT_EXTRACTION_PROMPT.format(
+            retain_mission_section=retain_mission_section,
+        )
     else:
         base_prompt = CONCISE_FACT_EXTRACTION_PROMPT
         prompt = base_prompt.format(
@@ -2013,13 +2038,44 @@ async def extract_facts_from_contents(
                     global_fact_idx += 1
                     fact_idx_in_content += 1
 
-    # Step 4: Add time offsets to preserve ordering within each content
+    # Step 4: For verbatim mode, collapse to one fact per chunk with original text
+    if config.retain_extraction_mode == "verbatim":
+        extracted_facts = _collapse_to_verbatim(extracted_facts, chunks_metadata)
+
+    # Step 5: Add time offsets to preserve ordering within each content
     _add_temporal_offsets(extracted_facts, contents)
 
-    # Step 5: Auto-tag facts from label groups with tag=True
+    # Step 6: Auto-tag facts from label groups with tag=True
     _inject_label_tags(extracted_facts, config)
 
     return extracted_facts, chunks_metadata, total_usage
+
+
+def _collapse_to_verbatim(facts: list[ExtractedFactType], chunks: list[ChunkMetadata]) -> list[ExtractedFactType]:
+    """
+    For verbatim mode: ensure one fact per chunk with the original chunk text preserved.
+
+    The LLM prompt asks for exactly one fact per chunk, but if it returns more,
+    this collapses them: keeps the first fact as representative, overrides its
+    fact_text with the raw chunk text, and merges entities from any extra facts.
+    """
+    chunk_text_map = {c.chunk_index: c.chunk_text for c in chunks}
+    seen: dict[int, ExtractedFactType] = {}
+    result: list[ExtractedFactType] = []
+
+    for fact in facts:
+        if fact.chunk_index not in seen:
+            fact.fact_text = chunk_text_map.get(fact.chunk_index, fact.fact_text)
+            seen[fact.chunk_index] = fact
+            result.append(fact)
+        else:
+            # Merge entities from extra facts into the representative
+            representative = seen[fact.chunk_index]
+            for entity in fact.entities:
+                if entity not in representative.entities:
+                    representative.entities.append(entity)
+
+    return result
 
 
 def _parse_datetime(date_str: str):

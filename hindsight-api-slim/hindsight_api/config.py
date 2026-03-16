@@ -443,7 +443,7 @@ DEFAULT_RETAIN_MAX_COMPLETION_TOKENS = 64000  # Max tokens for fact extraction L
 DEFAULT_RETAIN_CHUNK_SIZE = 3000  # Max chars per chunk for fact extraction
 DEFAULT_RETAIN_EXTRACT_CAUSAL_LINKS = True  # Extract causal links between facts
 DEFAULT_RETAIN_EXTRACTION_MODE = "concise"  # Extraction mode: "concise", "verbose", or "custom"
-RETAIN_EXTRACTION_MODES = ("concise", "verbose", "custom")  # Allowed extraction modes
+RETAIN_EXTRACTION_MODES = ("concise", "verbose", "custom", "verbatim")  # Allowed extraction modes
 DEFAULT_RETAIN_MISSION = None  # Declarative spec of what to retain (injected into any extraction mode)
 DEFAULT_RETAIN_CUSTOM_INSTRUCTIONS = None  # Custom extraction guidelines (only used when mode="custom")
 DEFAULT_RETAIN_BATCH_TOKENS = 10_000  # ~40KB of text  # Max chars per sub-batch for async retain auto-splitting
@@ -1101,9 +1101,7 @@ class HindsightConfig:
                 ENV_RERANKER_LOCAL_TRUST_REMOTE_CODE, str(DEFAULT_RERANKER_LOCAL_TRUST_REMOTE_CODE)
             ).lower()
             in ("true", "1"),
-            reranker_local_fp16=os.getenv(
-                ENV_RERANKER_LOCAL_FP16, str(DEFAULT_RERANKER_LOCAL_FP16)
-            ).lower()
+            reranker_local_fp16=os.getenv(ENV_RERANKER_LOCAL_FP16, str(DEFAULT_RERANKER_LOCAL_FP16)).lower()
             in ("true", "1"),
             reranker_local_bucket_batching=os.getenv(
                 ENV_RERANKER_LOCAL_BUCKET_BATCHING, str(DEFAULT_RERANKER_LOCAL_BUCKET_BATCHING)
