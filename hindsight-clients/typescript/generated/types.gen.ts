@@ -1247,7 +1247,7 @@ export type MemoryItem = {
   /**
    * Strategy
    *
-   * Named retain strategy for this item. Overrides the request-level strategy for this item only. Strategies are defined in the bank config under 'retain_strategies'.
+   * Named retain strategy for this item. Overrides the bank's default strategy for this item only. Strategies are defined in the bank config under 'retain_strategies'.
    */
   strategy?: string | null;
 };
@@ -1927,12 +1927,6 @@ export type RetainRequest = {
    * If true, process asynchronously in background. If false, wait for completion (default: false)
    */
   async?: boolean;
-  /**
-   * Strategy
-   *
-   * Named retain strategy to use for this request. Overrides the bank's default strategy. Strategies are defined in the bank config under 'retain_strategies'.
-   */
-  strategy?: string | null;
   /**
    * Document Tags
    *

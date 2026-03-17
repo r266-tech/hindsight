@@ -319,6 +319,7 @@ function BankSelectorInner() {
         observation_scopes?: "per_tag" | "combined" | "all_combinations" | string[][];
         metadata?: Record<string, string>;
         entities?: Array<{ text: string }>;
+        strategy?: string;
       } = { content: docContent };
       if (docContext) item.context = docContext;
       if (docEventDate) item.timestamp = docEventDate + ":00";
@@ -346,12 +347,12 @@ function BankSelectorInner() {
       if (parsedMeta) item.metadata = parsedMeta;
       const parsedEntities = parseEntities(docEntities);
       if (parsedEntities) item.entities = parsedEntities;
+      if (docStrategy) item.strategy = docStrategy;
 
       await client.retain({
         bank_id: currentBank,
         items: [item],
         async: docAsync,
-        ...(docStrategy && { strategy: docStrategy }),
       });
 
       // Reset form and close dialog

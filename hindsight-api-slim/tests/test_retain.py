@@ -2698,35 +2698,33 @@ def test_strategy_overrides_extraction_mode_for_chunks():
 def test_retain_request_per_item_strategy_field():
     """
     Unit test: MemoryItem accepts a strategy field; items with different strategies
-    are grouped correctly by effective strategy (item.strategy ?? request.strategy).
+    are grouped correctly by per-item strategy.
     """
-    from hindsight_api.api.http import MemoryItem, RetainRequest
+    from hindsight_api.api.http import RetainRequest
 
     request = RetainRequest.model_validate(
         {
             "items": [
                 {"content": "Alice joined.", "strategy": "fast"},
                 {"content": "Bob left.", "strategy": "detailed"},
-                {"content": "Carol arrived."},  # no per-item strategy
+                {"content": "Carol arrived."},  # no strategy — falls back to bank default
             ],
-            "strategy": "default_strategy",
         }
     )
 
     assert request.items[0].strategy == "fast"
     assert request.items[1].strategy == "detailed"
-    assert request.items[2].strategy is None  # will inherit request.strategy downstream
+    assert request.items[2].strategy is None
 
     # Simulate grouping logic from api_retain handler
     strategy_groups: dict = {}
     for item in request.items:
-        effective = item.strategy if item.strategy is not None else request.strategy
-        strategy_groups.setdefault(effective, []).append(item.content)
+        strategy_groups.setdefault(item.strategy, []).append(item.content)
 
-    assert set(strategy_groups.keys()) == {"fast", "detailed", "default_strategy"}
+    assert set(strategy_groups.keys()) == {"fast", "detailed", None}
     assert strategy_groups["fast"] == ["Alice joined."]
     assert strategy_groups["detailed"] == ["Bob left."]
-    assert strategy_groups["default_strategy"] == ["Carol arrived."]
+    assert strategy_groups[None] == ["Carol arrived."]
     logger.info("✓ per-item strategy grouping works correctly")
 
 

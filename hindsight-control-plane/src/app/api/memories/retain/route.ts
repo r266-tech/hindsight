@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "bank_id is required" }, { status: 400 });
     }
 
-    const { items, document_id, document_tags, observation_scopes, strategy } = body;
+    const { items, document_id, document_tags, observation_scopes } = body;
 
     // Map observation_scopes into each item if provided at request level
     const mappedItems = observation_scopes
@@ -23,7 +23,6 @@ export async function POST(request: NextRequest) {
     const response = await hindsightClient.retainBatch(bankId, mappedItems, {
       documentId: document_id,
       documentTags: document_tags,
-      strategy,
     });
 
     return NextResponse.json(response, { status: 200 });

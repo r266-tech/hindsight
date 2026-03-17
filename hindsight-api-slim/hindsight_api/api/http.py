@@ -427,7 +427,7 @@ class MemoryItem(BaseModel):
     )
     strategy: str | None = Field(
         default=None,
-        description="Named retain strategy for this item. Overrides the request-level strategy for this item only. "
+        description="Named retain strategy for this item. Overrides the bank's default strategy for this item only. "
         "Strategies are defined in the bank config under 'retain_strategies'.",
     )
 
@@ -475,11 +475,6 @@ class RetainRequest(BaseModel):
         default=False,
         alias="async",
         description="If true, process asynchronously in background. If false, wait for completion (default: false)",
-    )
-    strategy: str | None = Field(
-        default=None,
-        description="Named retain strategy to use for this request. Overrides the bank's default strategy. "
-        "Strategies are defined in the bank config under 'retain_strategies'.",
     )
     document_tags: list[str] | None = Field(
         default=None,
@@ -4460,10 +4455,10 @@ def _register_routes(app: FastAPI):
         metrics = get_metrics_collector()
 
         try:
-            # Group items by effective strategy (item-level overrides request-level)
+            # Group items by strategy
             strategy_groups: dict[str | None, list[dict]] = {}
             for item in request.items:
-                effective = item.strategy if item.strategy is not None else request.strategy
+                effective = item.strategy
                 if effective not in strategy_groups:
                     strategy_groups[effective] = []
                 content_dict: dict = {"content": item.content}

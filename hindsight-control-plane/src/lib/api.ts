@@ -208,7 +208,6 @@ export class ControlPlaneClient {
     }>;
     document_id?: string;
     async?: boolean;
-    strategy?: string;
   }) {
     const endpoint = params.async ? "/api/memories/retain_async" : "/api/memories/retain";
     return this.fetchApi<{ message?: string }>(endpoint, {

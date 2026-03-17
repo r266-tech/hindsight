@@ -6096,7 +6096,7 @@
               }
             ],
             "title": "Strategy",
-            "description": "Named retain strategy for this item. Overrides the request-level strategy for this item only. Strategies are defined in the bank config under 'retain_strategies'."
+            "description": "Named retain strategy for this item. Overrides the bank's default strategy for this item only. Strategies are defined in the bank config under 'retain_strategies'."
           }
         },
         "type": "object",
@@ -7463,18 +7463,6 @@
             "title": "Async",
             "description": "If true, process asynchronously in background. If false, wait for completion (default: false)",
             "default": false
-          },
-          "strategy": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Strategy",
-            "description": "Named retain strategy to use for this request. Overrides the bank's default strategy. Strategies are defined in the bank config under 'retain_strategies'."
           },
           "document_tags": {
             "anyOf": [
