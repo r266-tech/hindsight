@@ -18,16 +18,18 @@ image: /img/blog/hermes-agent-memory.png
 - One `pip install`, three environment variables, disable the built-in `memory` tool, and you're done
 - Works with [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup) (zero infra) or self-hosted
 
-## The problem: Hermes agents forget everything
+## The problem: good memory, but it could go further
 
-Hermes Agent has a built-in `memory` tool that saves facts to `~/.hermes/` as local files. It works for basic use cases, but it breaks down fast:
+Hermes Agent has memory built in, and it's a reasonable design. The `memory` tool saves durable facts to `~/.hermes/` as persistent files, and the `session_search` tool lets the agent look back through past conversations. It works — the agent can store preferences, recall context, and carry knowledge across sessions.
 
-- **No structure.** It dumps text into flat files. No entity resolution, no relationships, no temporal awareness.
-- **No retrieval intelligence.** Search is basic string matching. Ask "what did Alice say about the database migration?" and it won't connect "Alice" with "my coworker Alice from engineering."
-- **Local only.** Memories are trapped on one machine. Run Hermes on your laptop and your server — two separate brains.
-- **No synthesis.** You can store facts and retrieve facts. You can't ask "based on everything you know about this customer, what should we prioritize?"
+But there's room to grow:
 
-What you want: a memory system that extracts structured facts from conversations, resolves entities, builds a knowledge graph, and retrieves what's actually relevant.
+- **Structure.** Memories are stored as text. There's no entity resolution (connecting "Alice" with "my coworker Alice from engineering"), no relationship tracking, and no temporal awareness beyond session timestamps.
+- **Retrieval.** Search is keyword-based. For simple lookups that's fine, but it struggles with questions that use different terminology than what was stored.
+- **Locality.** Memories live on disk. Run Hermes on your laptop and your server — two separate brains with no way to share context.
+- **Synthesis.** You can store and retrieve facts, but you can't ask "based on everything you know about this customer, what should we prioritize?" and get a reasoned answer.
+
+Hindsight adds the layer on top: structured fact extraction, entity resolution, a knowledge graph, multi-strategy retrieval with cross-encoder reranking, and a `reflect` operation that synthesizes across all stored memories.
 
 ## Architecture: a plugin that registers three tools
 
