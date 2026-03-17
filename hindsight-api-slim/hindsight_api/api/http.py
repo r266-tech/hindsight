@@ -1328,6 +1328,14 @@ class ClearMemoryObservationsResponse(BaseModel):
     deleted_count: int
 
 
+class RetryFailedConsolidationResponse(BaseModel):
+    """Response model for retrying failed consolidation."""
+
+    model_config = ConfigDict(json_schema_extra={"example": {"retried_count": 42}})
+
+    retried_count: int
+
+
 class BankStatsResponse(BaseModel):
     """Response model for bank statistics endpoint."""
 
@@ -3900,6 +3908,36 @@ def _register_routes(app: FastAPI):
 
             error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
             logger.error(f"Error in DELETE /v1/default/banks/{bank_id}/observations: {error_detail}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post(
+        "/v1/default/banks/{bank_id}/consolidation/retry-failed",
+        response_model=RetryFailedConsolidationResponse,
+        summary="Retry failed consolidation",
+        description=(
+            "Reset all memories that were permanently marked as failed during consolidation "
+            "(after exhausting all LLM retries and adaptive batch splitting) so they are "
+            "picked up again on the next consolidation run. Does not delete any observations."
+        ),
+        operation_id="retry_failed_consolidation",
+        tags=["Banks"],
+    )
+    async def api_retry_failed_consolidation(
+        bank_id: str, request_context: RequestContext = Depends(get_request_context)
+    ):
+        """Reset consolidation-failed memories for retry."""
+        try:
+            result = await app.state.memory.retry_failed_consolidation(bank_id, request_context=request_context)
+            return RetryFailedConsolidationResponse(retried_count=result["retried_count"])
+        except OperationValidationError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.reason)
+        except (AuthenticationError, HTTPException):
+            raise
+        except Exception as e:
+            import traceback
+
+            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"Error in POST /v1/default/banks/{bank_id}/consolidation/retry-failed: {error_detail}")
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.delete(
