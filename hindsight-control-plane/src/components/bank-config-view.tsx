@@ -693,7 +693,7 @@ type RetainFormValues = {
   entity_labels: LabelGroup[] | null;
 };
 
-const EXTRACTION_MODES = ["concise", "verbose", "verbatim", "index_only", "custom"];
+const EXTRACTION_MODES = ["concise", "verbose", "verbatim", "chunks", "custom"];
 const INHERIT_SENTINEL = "__inherit__";
 
 function RetainStrategyForm({
@@ -712,7 +712,7 @@ function RetainStrategyForm({
     <div className="divide-y divide-border/40">
       <FieldRow
         label="Extraction Mode"
-        description="How aggressively to extract facts. concise = selective, verbose = capture everything, verbatim = store chunks as-is (still extract entities/time), index_only = no LLM, custom = write your own rules."
+        description="How aggressively to extract facts. concise = selective, verbose = capture everything, verbatim = store chunks as-is (still extract entities/time), chunks = no LLM, custom = write your own rules."
       >
         <Select
           value={modeValue}

@@ -2334,7 +2334,7 @@ def test_apply_strategy():
 
     strategies = {
         "documents": {
-            "retain_extraction_mode": "index_only",
+            "retain_extraction_mode": "chunks",
             "retain_chunk_size": 800,
             "entities_allow_free_form": False,
         },
@@ -2349,7 +2349,7 @@ def test_apply_strategy():
 
     # Known strategy: overrides applied
     result = apply_strategy(config_with_strategies, "documents")
-    assert result.retain_extraction_mode == "index_only"
+    assert result.retain_extraction_mode == "chunks"
     assert result.retain_chunk_size == 800
     assert result.entities_allow_free_form is False
 
@@ -2397,9 +2397,9 @@ def test_collapse_to_verbatim_single_fact_per_chunk():
     assert "bug" in result[1].entities
 
 
-def test_index_only_extraction_mode():
+def test_chunks_extraction_mode():
     """
-    Unit test for index_only mode: no LLM, chunks stored as-is, zero token usage.
+    Unit test for chunks mode: no LLM, chunks stored as-is, zero token usage.
     """
     import asyncio
     import os
@@ -2411,7 +2411,7 @@ def test_index_only_extraction_mode():
     original_mode = os.getenv("HINDSIGHT_API_RETAIN_EXTRACTION_MODE")
 
     try:
-        os.environ["HINDSIGHT_API_RETAIN_EXTRACTION_MODE"] = "index_only"
+        os.environ["HINDSIGHT_API_RETAIN_EXTRACTION_MODE"] = "chunks"
         clear_config_cache()
 
         contents = [
@@ -2446,7 +2446,7 @@ def test_index_only_extraction_mode():
         # Zero token usage
         assert usage.total_tokens == 0
 
-        logger.info("✓ index_only mode: no LLM call, chunks stored as-is, zero token usage")
+        logger.info("✓ chunks mode: no LLM call, chunks stored as-is, zero token usage")
 
     finally:
         if original_mode is not None:
@@ -2651,9 +2651,9 @@ def test_retain_mission_config_loaded_from_env():
         clear_config_cache()
 
 
-def test_strategy_overrides_extraction_mode_for_index_only():
+def test_strategy_overrides_extraction_mode_for_chunks():
     """
-    Unit test: a named strategy with retain_extraction_mode=index_only causes
+    Unit test: a named strategy with retain_extraction_mode=chunks causes
     extract_facts_from_contents to skip the LLM and return verbatim chunks.
     """
     import asyncio
@@ -2666,13 +2666,13 @@ def test_strategy_overrides_extraction_mode_for_index_only():
     clear_config_cache()
     base_config = _get_raw_config()
 
-    # Build a config that has a strategy overriding to index_only
-    strategies = {"fast": {"retain_extraction_mode": "index_only"}}
+    # Build a config that has a strategy overriding to chunks
+    strategies = {"fast": {"retain_extraction_mode": "chunks"}}
     config_with_strategies = base_config.__class__(
         **{**base_config.__dict__, "retain_strategies": strategies}
     )
     strategy_config = apply_strategy(config_with_strategies, "fast")
-    assert strategy_config.retain_extraction_mode == "index_only"
+    assert strategy_config.retain_extraction_mode == "chunks"
 
     contents = [
         RetainContent(content="Alice deployed the new API on Monday."),
@@ -2682,7 +2682,7 @@ def test_strategy_overrides_extraction_mode_for_index_only():
     facts, chunks, usage = asyncio.get_event_loop().run_until_complete(
         extract_facts_from_contents(
             contents=contents,
-            llm_config=None,  # index_only must not call the LLM
+            llm_config=None,  # chunks must not call the LLM
             agent_name="TestAgent",
             config=strategy_config,
         )
@@ -2692,7 +2692,7 @@ def test_strategy_overrides_extraction_mode_for_index_only():
     assert facts[0].fact_text == contents[0].content
     assert facts[1].fact_text == contents[1].content
     assert usage.total_tokens == 0
-    logger.info("✓ strategy with index_only mode: no LLM, verbatim chunks, zero tokens")
+    logger.info("✓ strategy with chunks mode: no LLM, verbatim chunks, zero tokens")
 
 
 def test_retain_request_per_item_strategy_field():
@@ -2738,7 +2738,7 @@ async def test_named_strategy_applied_end_to_end(memory, request_context):
 
     Regression test for the bug where strategy was passed through the HTTP layer
     but the extraction mode override was silently ignored, always using the bank
-    default (e.g. 'concise') instead of the strategy's override (e.g. 'index_only').
+    default (e.g. 'concise') instead of the strategy's override (e.g. 'chunks').
     """
     from hindsight_api.config_resolver import ConfigResolver
 
@@ -2753,13 +2753,13 @@ async def test_named_strategy_applied_end_to_end(memory, request_context):
             request_context=request_context,
         )
 
-        # Now configure the bank with a named strategy that overrides to index_only
+        # Now configure the bank with a named strategy that overrides to chunks
         await memory._config_resolver.update_bank_config(
             bank_id,
             {
                 "retain_extraction_mode": "concise",  # bank default
                 "retain_strategies": {
-                    "chunks": {"retain_extraction_mode": "index_only"},
+                    "chunks": {"retain_extraction_mode": "chunks"},
                 },
             },
             request_context,
@@ -2776,16 +2776,16 @@ async def test_named_strategy_applied_end_to_end(memory, request_context):
             return_usage=True,
         )
 
-        # index_only produces exactly one fact per chunk (verbatim) and calls no LLM
-        assert usage.total_tokens == 0, f"index_only should use zero LLM tokens, got {usage.total_tokens}"
+        # chunks produces exactly one fact per chunk (verbatim) and calls no LLM
+        assert usage.total_tokens == 0, f"chunks should use zero LLM tokens, got {usage.total_tokens}"
         assert len(unit_ids_by_content) == 1
-        assert len(unit_ids_by_content[0]) == 1, "index_only should produce exactly one fact per content item"
+        assert len(unit_ids_by_content[0]) == 1, "chunks should produce exactly one fact per content item"
 
         # Verify the stored fact is the verbatim content
         facts = await memory.recall_async(bank_id, "Alice", request_context=request_context)
         assert any("Alice" in f.text for f in facts.results), "Verbatim content should be retrievable"
 
-        logger.info("✓ named strategy 'chunks' with index_only applied end-to-end: no LLM, verbatim storage")
+        logger.info("✓ named strategy 'chunks' with chunks applied end-to-end: no LLM, verbatim storage")
 
     finally:
         await memory.delete_bank(bank_id, request_context=request_context)

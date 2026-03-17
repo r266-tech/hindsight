@@ -1961,12 +1961,12 @@ async def extract_facts_from_contents_batch_api(
     return extracted_facts, chunks_metadata, total_usage
 
 
-def _extract_facts_index_only(
+def _extract_facts_chunks(
     contents: list[RetainContent],
     config,
 ) -> tuple[list[ExtractedFactType], list[ChunkMetadata], TokenUsage]:
     """
-    index_only mode: no LLM call, no entity extraction.
+    chunks mode: no LLM call, no entity extraction.
 
     Each chunk becomes one memory unit with the raw text as fact_text.
     User-provided entities from RetainContent.entities are picked up downstream
@@ -2042,10 +2042,10 @@ async def extract_facts_from_contents(
     if not contents:
         return [], [], TokenUsage()
 
-    # index_only mode: skip LLM entirely, store each chunk as-is
+    # chunks mode: skip LLM entirely, store each chunk as-is
     # Must come before the batch-API check so no LLM queue/locks are acquired
-    if config.retain_extraction_mode == "index_only":
-        return _extract_facts_index_only(contents, config)
+    if config.retain_extraction_mode == "chunks":
+        return _extract_facts_chunks(contents, config)
 
     # Route to batch API if enabled
     if config.retain_batch_enabled:

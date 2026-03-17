@@ -567,7 +567,7 @@ Controls the retain (memory ingestion) pipeline.
 |----------|-------------|---------|
 | `HINDSIGHT_API_RETAIN_MAX_COMPLETION_TOKENS` | Max completion tokens for fact extraction LLM calls | `64000` |
 | `HINDSIGHT_API_RETAIN_CHUNK_SIZE` | Max characters per chunk for fact extraction. Larger chunks extract fewer LLM calls but may lose context. | `3000` |
-| `HINDSIGHT_API_RETAIN_EXTRACTION_MODE` | Fact extraction mode: `concise`, `verbose`, `verbatim`, `index_only`, or `custom` | `concise` |
+| `HINDSIGHT_API_RETAIN_EXTRACTION_MODE` | Fact extraction mode: `concise`, `verbose`, `verbatim`, `chunks`, or `custom` | `concise` |
 | `HINDSIGHT_API_RETAIN_MISSION` | What this bank should pay attention to during extraction. Steers the LLM without replacing the extraction rules — works alongside any extraction mode. | - |
 | `HINDSIGHT_API_RETAIN_CUSTOM_INSTRUCTIONS` | Full prompt override for fact extraction (only used when mode is `custom`). Replaces built-in extraction rules entirely. | - |
 | `HINDSIGHT_API_RETAIN_EXTRACT_CAUSAL_LINKS` | Extract causal relationships between facts | `true` |
@@ -585,12 +585,12 @@ There are five levels of customization for the retain pipeline. Start with the s
 | Steer what topics to focus on or deprioritize | `HINDSIGHT_API_RETAIN_MISSION` |
 | Extract more detail per fact | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE=verbose` |
 | Store chunks as-is, LLM extracts metadata | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE=verbatim` |
-| Store chunks as-is, zero LLM cost | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE=index_only` |
+| Store chunks as-is, zero LLM cost | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE=chunks` |
 | Completely replace the extraction rules | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE=custom` + `HINDSIGHT_API_RETAIN_CUSTOM_INSTRUCTIONS` |
 
 **`HINDSIGHT_API_RETAIN_MISSION` — steer extraction without replacing it (recommended starting point)**
 
-Tell the bank what to pay attention to during extraction, in plain language. The mission is injected into the extraction prompt alongside the built-in rules — it narrows focus without replacing the underlying logic. Works with any extraction mode (`concise`, `verbose`, `verbatim`, `custom`). Ignored in `index_only` mode.
+Tell the bank what to pay attention to during extraction, in plain language. The mission is injected into the extraction prompt alongside the built-in rules — it narrows focus without replacing the underlying logic. Works with any extraction mode (`concise`, `verbose`, `verbatim`, `custom`). Ignored in `chunks` mode.
 
 ```bash
 export HINDSIGHT_API_RETAIN_MISSION="Focus on technical decisions, architecture choices, and team member expertise. Deprioritize social or personal information."
@@ -625,7 +625,7 @@ Configure strategies via the bank config API:
       "retain_chunk_size": 3000
     },
     "documents": {
-      "retain_extraction_mode": "index_only",
+      "retain_extraction_mode": "chunks",
       "retain_chunk_size": 800,
       "entity_labels": null,
       "entities_allow_free_form": false
@@ -646,14 +646,14 @@ client.retain(bank_id, items=[{"content": "...document text..."}], strategy="doc
 
 If no `strategy` is specified in a retain call, `retain_default_strategy` is used. If neither is set, the bank/global config applies directly.
 
-> **Note on chunk size and retrieval fairness**: When mixing strategies with very different chunk sizes in the same bank, `index_only` and `verbatim` memories participate only in semantic retrieval (not entity graph or temporal paths). Smaller chunk sizes (e.g., 800 chars) produce more targeted embeddings and are recommended for document strategies to keep scores comparable with LLM-extracted facts.
+> **Note on chunk size and retrieval fairness**: When mixing strategies with very different chunk sizes in the same bank, `chunks` and `verbatim` memories participate only in semantic retrieval (not entity graph or temporal paths). Smaller chunk sizes (e.g., 800 chars) produce more targeted embeddings and are recommended for document strategies to keep scores comparable with LLM-extracted facts.
 
-**`HINDSIGHT_API_RETAIN_EXTRACTION_MODE=index_only` — zero LLM cost**
+**`HINDSIGHT_API_RETAIN_EXTRACTION_MODE=chunks` — zero LLM cost**
 
 Each chunk is stored as-is with no LLM call whatsoever. No entity extraction, no temporal indexing — only embeddings are generated for semantic search. User-provided entities passed via `RetainContent.entities` are the sole source of entity data. Use when ingestion speed and cost matter more than structured metadata.
 
 ```bash
-export HINDSIGHT_API_RETAIN_EXTRACTION_MODE=index_only
+export HINDSIGHT_API_RETAIN_EXTRACTION_MODE=chunks
 ```
 
 **`HINDSIGHT_API_RETAIN_EXTRACTION_MODE=custom` + `HINDSIGHT_API_RETAIN_CUSTOM_INSTRUCTIONS` — full control**
