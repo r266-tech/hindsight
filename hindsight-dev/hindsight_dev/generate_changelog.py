@@ -257,7 +257,11 @@ def build_changelog_markdown(
     integration: str | None = None,
 ) -> str:
     """Build markdown changelog from structured entries."""
-    tag_url = f"https://github.com/{GITHUB_REPO}/releases/tag/{tag}" if not integration else f"https://github.com/{GITHUB_REPO}/tree/{tag}"
+    tag_url = (
+        f"https://github.com/{GITHUB_REPO}/releases/tag/{tag}"
+        if not integration
+        else f"https://github.com/{GITHUB_REPO}/tree/{tag}"
+    )
 
     # Group entries by category
     categories = {
@@ -455,7 +459,9 @@ def generate_integration_changelog_entry(
         console.print("")
 
         console.print(f"[blue]Analyzing commits with LLM ({llm_model})...[/blue]")
-        entries = analyze_commits_with_llm(client, llm_model, display_version, commits, file_diff, integration=integration)
+        entries = analyze_commits_with_llm(
+            client, llm_model, display_version, commits, file_diff, integration=integration
+        )
 
         console.print(f"\n[bold]LLM identified {len(entries)} changelog entries:[/bold]")
         for entry in entries:
