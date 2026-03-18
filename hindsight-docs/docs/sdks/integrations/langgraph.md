@@ -2,15 +2,15 @@
 sidebar_position: 7
 ---
 
-# LangGraph
+# LangGraph / LangChain
 
-Persistent long-term memory for [LangGraph](https://langchain-ai.github.io/langgraph/) agents via Hindsight. Three integration patterns — tools, graph nodes, and a BaseStore adapter — so you can pick the right level of abstraction.
+Persistent long-term memory for [LangGraph](https://langchain-ai.github.io/langgraph/) and [LangChain](https://python.langchain.com/) agents via Hindsight. Three integration patterns at different abstraction levels — the tools pattern works with both LangChain and LangGraph, while nodes and the BaseStore adapter are LangGraph-specific.
 
 ## Features
 
-- **Memory Tools** — retain, recall, and reflect as LangChain `@tool` functions compatible with `bind_tools()` and `ToolNode`
-- **Graph Nodes** — Pre-built nodes that auto-inject memories before LLM calls and auto-store after responses
-- **BaseStore Adapter** — Drop-in `BaseStore` implementation backed by Hindsight, for LangGraph's native memory patterns
+- **Memory Tools** — retain, recall, and reflect as LangChain `@tool` functions compatible with `bind_tools()` and `ToolNode`. Works with **both LangChain and LangGraph** — no LangGraph dependency required for this pattern.
+- **Graph Nodes** *(LangGraph)* — Pre-built nodes that auto-inject memories before LLM calls and auto-store after responses
+- **BaseStore Adapter** *(LangGraph)* — Drop-in `BaseStore` implementation backed by Hindsight, for LangGraph's native memory patterns
 - **Dynamic Banks** — Resolve bank IDs per-request from `RunnableConfig` for per-user memory
 - **Async-Native** — Uses `aretain`, `arecall`, `areflect` directly — no thread-pool workarounds
 
@@ -20,9 +20,11 @@ Persistent long-term memory for [LangGraph](https://langchain-ai.github.io/langg
 pip install hindsight-langgraph
 ```
 
-## Quick Start: Tools
+## Quick Start: Tools (LangChain & LangGraph)
 
-Bind Hindsight memory tools to your LangGraph agent so it can store and retrieve memories on demand.
+The tools pattern creates standard LangChain `@tool` functions that work with any LangChain-compatible model via `bind_tools()`. You can use them with a LangGraph agent or with plain LangChain — no LangGraph required.
+
+**With LangGraph (recommended):**
 
 ```python
 from hindsight_client import Hindsight
@@ -40,13 +42,29 @@ result = await agent.ainvoke(
 )
 ```
 
+**With plain LangChain:**
+
+```python
+from hindsight_client import Hindsight
+from hindsight_langgraph import create_hindsight_tools
+from langchain_openai import ChatOpenAI
+
+client = Hindsight(base_url="http://localhost:8888")
+tools = create_hindsight_tools(client=client, bank_id="user-123")
+
+model = ChatOpenAI(model="gpt-4o").bind_tools(tools)
+response = await model.ainvoke("Remember that I prefer dark mode")
+```
+
+When using plain LangChain, you handle the tool execution loop yourself — call the model, check for `tool_calls`, execute them, and feed results back. LangGraph automates this loop for you.
+
 The agent gets three tools it can call:
 
 - **`hindsight_retain`** — Store information to long-term memory
 - **`hindsight_recall`** — Search long-term memory for relevant facts
 - **`hindsight_reflect`** — Synthesize a reasoned answer from memories
 
-## Quick Start: Memory Nodes
+## Quick Start: Memory Nodes (LangGraph)
 
 Add recall and retain nodes to your graph for automatic memory injection and storage.
 
@@ -75,7 +93,7 @@ graph = builder.compile()
 
 The recall node extracts the latest user message, searches Hindsight, and injects matching memories as a `SystemMessage`. The retain node stores human messages (optionally AI messages too) after the response.
 
-## Quick Start: BaseStore
+## Quick Start: BaseStore (LangGraph)
 
 Use Hindsight as a LangGraph `BaseStore` for cross-thread persistent memory with semantic search.
 

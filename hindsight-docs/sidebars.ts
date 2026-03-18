@@ -229,7 +229,7 @@ const sidebars: SidebarsConfig = {
         {
           type: 'doc',
           id: 'sdks/integrations/langgraph',
-          label: 'LangGraph',
+          label: 'LangGraph / LangChain',
           customProps: { icon: '/img/icons/langgraph.png' },
         },
         {
