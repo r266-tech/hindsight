@@ -1,5 +1,5 @@
 ---
-title: "Give the Only Self-Improving AI Agent a Memory Upgrade It Deserves"
+title: "Give the Only Self-Improving AI Agent (Hermes) a Memory Upgrade It Deserves"
 authors: [benfrank241]
 date: 2026-03-17
 tags: [hermes, agents, python, memory, tutorial, plugin]
