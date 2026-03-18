@@ -124,31 +124,6 @@ tools = create_hindsight_tools(
 )
 ```
 
-## Hindsight Cloud
-
-Works out of the box with [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup). Set your API key via environment variable or pass it directly:
-
-```bash
-export HINDSIGHT_API_KEY="your-cloud-api-key"
-```
-
-```python
-from hindsight_client import Hindsight
-from hindsight_langgraph import create_hindsight_tools
-
-# Cloud — pass both base_url and api_key (base_url is required)
-client = Hindsight(base_url="https://api.hindsight.vectorize.io", api_key="your-cloud-api-key")
-tools = create_hindsight_tools(client=client, bank_id="user-123")
-```
-
-Or configure globally (the `configure()` function defaults to `https://api.hindsight.vectorize.io` when no URL is provided):
-
-```python
-from hindsight_langgraph import configure
-
-configure(api_key="your-cloud-api-key")  # Defaults to https://api.hindsight.vectorize.io
-```
-
 ## Global Configuration
 
 Instead of passing a client to every call, configure once:
@@ -157,7 +132,7 @@ Instead of passing a client to every call, configure once:
 from hindsight_langgraph import configure, create_hindsight_tools
 
 configure(
-    hindsight_api_url="http://localhost:8888",  # Defaults to https://api.hindsight.vectorize.io
+    hindsight_api_url="http://localhost:8888",
     api_key="your-api-key",       # Or set HINDSIGHT_API_KEY env var
     budget="mid",                  # Recall budget: low/mid/high
     max_tokens=4096,               # Max tokens for recall results
