@@ -189,6 +189,27 @@ recall = create_recall_node(
 )
 ```
 
+### Using `output_key` for Prompt Control
+
+By default, the recall node appends a `SystemMessage` to `messages`. Use `output_key` to write memory text to a custom state field instead, giving you full control over prompt ordering:
+
+```python
+from typing import Optional
+from langgraph.graph import MessagesState
+
+class AgentState(MessagesState):
+    memory_context: Optional[str] = None
+
+recall = create_recall_node(
+    client=client,
+    bank_id="user-123",
+    output_key="memory_context",
+)
+
+# In your agent node, read state["memory_context"] and prepend it
+# to the system prompt before calling the model.
+```
+
 ## Limitations and Notes
 
 ### HindsightStore
@@ -249,6 +270,7 @@ recall = create_recall_node(
 | `tags` | `None` | Tags to filter recall results |
 | `tags_match` | `"any"` | Tag matching mode |
 | `bank_id_from_config` | `"user_id"` | Config key to resolve bank ID at runtime |
+| `output_key` | `None` | If set, write memory text to this state key instead of appending a SystemMessage to `messages` |
 
 ### `create_retain_node()`
 

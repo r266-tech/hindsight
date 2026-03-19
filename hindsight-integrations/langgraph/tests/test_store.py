@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from hindsight_langgraph.errors import HindsightError
-from hindsight_langgraph.store import HindsightStore, _namespace_to_bank_id, _parse_value
+from hindsight_langgraph.store import (
+    HindsightStore,
+    _namespace_to_bank_id,
+    _parse_value,
+)
 
 
 def _mock_client():
@@ -40,7 +44,9 @@ class TestNamespaceMapping:
         assert _namespace_to_bank_id(()) == "default"
 
     def test_deep_namespace(self):
-        assert _namespace_to_bank_id(("org", "team", "user", "123")) == "org.team.user.123"
+        assert (
+            _namespace_to_bank_id(("org", "team", "user", "123")) == "org.team.user.123"
+        )
 
 
 class TestParseValue:
@@ -111,7 +117,9 @@ class TestHindsightStoreGet:
     @pytest.mark.asyncio
     async def test_get_returns_item_by_document_id(self):
         client = _mock_client()
-        client.arecall.return_value = _mock_recall_response(['{"color": "blue"}'], document_ids=["pref-1"])
+        client.arecall.return_value = _mock_recall_response(
+            ['{"color": "blue"}'], document_ids=["pref-1"]
+        )
         store = HindsightStore(client=client)
 
         item = await store.aget(("user", "123"), "pref-1")
@@ -146,7 +154,9 @@ class TestHindsightStoreSearch:
     @pytest.mark.asyncio
     async def test_search_returns_results(self):
         client = _mock_client()
-        client.arecall.return_value = _mock_recall_response(["User likes Python", "User is in NYC"])
+        client.arecall.return_value = _mock_recall_response(
+            ["User likes Python", "User is in NYC"]
+        )
         store = HindsightStore(client=client)
 
         results = await store.asearch(("user", "123"), query="preferences")
@@ -158,7 +168,9 @@ class TestHindsightStoreSearch:
     @pytest.mark.asyncio
     async def test_search_respects_limit(self):
         client = _mock_client()
-        client.arecall.return_value = _mock_recall_response(["fact1", "fact2", "fact3", "fact4", "fact5"])
+        client.arecall.return_value = _mock_recall_response(
+            ["fact1", "fact2", "fact3", "fact4", "fact5"]
+        )
         store = HindsightStore(client=client)
 
         results = await store.asearch(("user", "123"), query="facts", limit=2)
@@ -179,11 +191,16 @@ class TestHindsightStoreSearch:
     async def test_search_with_filter(self):
         client = _mock_client()
         client.arecall.return_value = _mock_recall_response(
-            ['{"type": "preference", "text": "likes Python"}', '{"type": "fact", "text": "lives in NYC"}']
+            [
+                '{"type": "preference", "text": "likes Python"}',
+                '{"type": "fact", "text": "lives in NYC"}',
+            ]
         )
         store = HindsightStore(client=client)
 
-        results = await store.asearch(("user", "123"), query="info", filter={"type": "preference"})
+        results = await store.asearch(
+            ("user", "123"), query="info", filter={"type": "preference"}
+        )
 
         assert len(results) == 1
         assert results[0].value["type"] == "preference"
@@ -223,6 +240,49 @@ class TestHindsightStoreListNamespaces:
         assert ("a", "b", "c") not in namespaces
         assert ("x", "y") not in namespaces
         assert len(namespaces) == 2
+
+    @pytest.mark.asyncio
+    async def test_list_filters_by_prefix(self):
+        client = _mock_client()
+        store = HindsightStore(client=client)
+
+        await store.aput(("user", "123"), "k1", {"v": 1})
+        await store.aput(("user", "456"), "k2", {"v": 2})
+        await store.aput(("org", "abc"), "k3", {"v": 3})
+
+        namespaces = await store.alist_namespaces(prefix=("user",))
+
+        assert ("user", "123") in namespaces
+        assert ("user", "456") in namespaces
+        assert ("org", "abc") not in namespaces
+
+    @pytest.mark.asyncio
+    async def test_list_filters_by_suffix(self):
+        client = _mock_client()
+        store = HindsightStore(client=client)
+
+        await store.aput(("user", "prefs"), "k1", {"v": 1})
+        await store.aput(("org", "prefs"), "k2", {"v": 2})
+        await store.aput(("user", "history"), "k3", {"v": 3})
+
+        namespaces = await store.alist_namespaces(suffix=("prefs",))
+
+        assert ("user", "prefs") in namespaces
+        assert ("org", "prefs") in namespaces
+        assert ("user", "history") not in namespaces
+
+    @pytest.mark.asyncio
+    async def test_list_filters_by_prefix_and_suffix(self):
+        client = _mock_client()
+        store = HindsightStore(client=client)
+
+        await store.aput(("user", "prefs"), "k1", {"v": 1})
+        await store.aput(("org", "prefs"), "k2", {"v": 2})
+        await store.aput(("user", "history"), "k3", {"v": 3})
+
+        namespaces = await store.alist_namespaces(prefix=("user",), suffix=("prefs",))
+
+        assert namespaces == [("user", "prefs")]
 
     @pytest.mark.asyncio
     async def test_list_respects_limit(self):

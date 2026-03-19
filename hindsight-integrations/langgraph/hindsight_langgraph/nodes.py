@@ -13,8 +13,6 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import MessagesState
 
 from ._client import resolve_client
-from .config import get_config
-from .errors import HindsightError
 
 logger = logging.getLogger(__name__)
 
@@ -52,20 +50,35 @@ def create_recall_node(
     tags: Optional[list[str]] = None,
     tags_match: str = "any",
     bank_id_from_config: str = "user_id",
+    output_key: Optional[str] = None,
 ):
     """Create a node that injects relevant memories into the conversation.
 
     This node extracts the latest user message, recalls relevant memories
-    from Hindsight, and adds them as a SystemMessage with a stable ID
-    (``"hindsight_memory_context"``). It should be placed before the LLM
-    call node in your graph.
+    from Hindsight, and returns them either as a SystemMessage in the
+    ``messages`` list (default) or as a plain string under a custom state
+    key via ``output_key``.
 
-    **Important:** ``MessagesState`` uses ``add_messages`` as its reducer,
-    which appends new messages. The memory SystemMessage will appear after
-    existing messages in the list, not at position 0. Most LLM providers
-    expect system messages first. To ensure correct ordering, your agent
-    node should sort or filter messages before passing them to the model,
-    or use the memory text from the SystemMessage to build your own prompt.
+    **Message ordering:** When using the default ``messages`` output,
+    ``MessagesState`` uses ``add_messages`` as its reducer, which appends.
+    The memory SystemMessage will appear after existing messages, not at
+    position 0. If your LLM provider requires system messages first, use
+    ``output_key`` to write the memory text to a separate state field and
+    inject it into your prompt in the agent node.
+
+    Example with ``output_key`` (recommended for correct ordering)::
+
+        from typing import Optional
+        from langgraph.graph import MessagesState
+
+        class AgentState(MessagesState):
+            memory_context: Optional[str] = None
+
+        recall = create_recall_node(
+            client=client, bank_id="user-123", output_key="memory_context"
+        )
+        # In your agent node, read state["memory_context"] and prepend
+        # it to the system prompt.
 
     The bank_id can be provided directly or resolved dynamically from
     the graph's RunnableConfig via the ``bank_id_from_config`` key.
@@ -83,20 +96,30 @@ def create_recall_node(
         bank_id_from_config: Config key to read bank_id from at runtime.
             Looked up in ``config["configurable"][bank_id_from_config]``.
             Only used when ``bank_id`` is not provided.
+        output_key: If set, write the memory text to this state key as a
+            plain string instead of appending a SystemMessage to ``messages``.
+            Use this with a custom state type to control where memory context
+            appears in your prompt.
 
     Returns:
         An async node function compatible with LangGraph StateGraph.
     """
     resolved_client = resolve_client(client, hindsight_api_url, api_key)
 
-    async def recall_node(state: MessagesState, config: Optional[RunnableConfig] = None) -> dict[str, Any]:
+    async def recall_node(
+        state: MessagesState, config: Optional[RunnableConfig] = None
+    ) -> dict[str, Any]:
         resolved_bank_id = bank_id
         if resolved_bank_id is None and config:
             configurable = config.get("configurable", {})
             resolved_bank_id = configurable.get(bank_id_from_config)
 
         if not resolved_bank_id:
-            logger.warning("No bank_id available for recall node, skipping memory injection.")
+            logger.warning(
+                "No bank_id available for recall node, skipping memory injection."
+            )
+            if output_key:
+                return {output_key: None}
             return {"messages": []}
 
         # Extract query from the latest human message
@@ -107,6 +130,8 @@ def create_recall_node(
                 break
 
         if not query:
+            if output_key:
+                return {output_key: None}
             return {"messages": []}
 
         try:
@@ -124,6 +149,8 @@ def create_recall_node(
             results = response.results[:max_results] if response.results else []
 
             if not results:
+                if output_key:
+                    return {output_key: None}
                 return {"messages": []}
 
             lines = ["Relevant memories about this user:"]
@@ -131,9 +158,17 @@ def create_recall_node(
                 lines.append(f"{i}. {result.text}")
             memory_text = "\n".join(lines)
 
-            return {"messages": [SystemMessage(content=memory_text, id="hindsight_memory_context")]}
+            if output_key:
+                return {output_key: memory_text}
+            return {
+                "messages": [
+                    SystemMessage(content=memory_text, id="hindsight_memory_context")
+                ]
+            }
         except Exception as e:
             logger.error(f"Recall node failed: {e}")
+            if output_key:
+                return {output_key: None}
             return {"messages": []}
 
     return recall_node
@@ -171,14 +206,18 @@ def create_retain_node(
     """
     resolved_client = resolve_client(client, hindsight_api_url, api_key)
 
-    async def retain_node(state: MessagesState, config: Optional[RunnableConfig] = None) -> dict[str, Any]:
+    async def retain_node(
+        state: MessagesState, config: Optional[RunnableConfig] = None
+    ) -> dict[str, Any]:
         resolved_bank_id = bank_id
         if resolved_bank_id is None and config:
             configurable = config.get("configurable", {})
             resolved_bank_id = configurable.get(bank_id_from_config)
 
         if not resolved_bank_id:
-            logger.warning("No bank_id available for retain node, skipping memory storage.")
+            logger.warning(
+                "No bank_id available for retain node, skipping memory storage."
+            )
             return {"messages": []}
 
         # Only retain the latest human and/or AI message to avoid
