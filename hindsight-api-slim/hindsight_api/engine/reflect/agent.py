@@ -777,13 +777,38 @@ async def run_reflect_agent(
         # Execute other tools in parallel (exclude done tool in all its format variants)
         other_tools = [tc for tc in result.tool_calls if not _is_done_tool(tc.name)]
         if other_tools:
-            # Add assistant message with tool calls
+            # Partition into enabled vs hallucinated (not in enabled_tools set)
+            allowed_tools = []
+            hallucinated_tools = []
+            for tc in other_tools:
+                norm = _normalize_tool_name(tc.name)
+                if enabled_tools is not None and norm not in enabled_tools and norm not in ("done", "expand"):
+                    hallucinated_tools.append(tc)
+                else:
+                    allowed_tools.append(tc)
+
+            # Build assistant message with all tool calls (LLM requires them for history)
             messages.append(
                 {
                     "role": "assistant",
                     "tool_calls": [_tool_call_to_dict(tc) for tc in other_tools],
                 }
             )
+
+            # Immediately reject hallucinated tool calls without adding to trace
+            for tc in hallucinated_tools:
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "name": tc.name,
+                        "content": json.dumps(
+                            {"error": f"Tool '{_normalize_tool_name(tc.name)}' is not available. Use only the tools provided to you."}
+                        ),
+                    }
+                )
+
+            other_tools = allowed_tools
 
             # Execute tools in parallel
             tool_tasks = [
