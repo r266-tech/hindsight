@@ -348,10 +348,10 @@ html_img_pattern = re.compile(r'<img\b[^>]*/?>',  re.IGNORECASE)
 
 changed = 0
 for md_file in refs_dir.rglob("*.md"):
-    content = md_file.read_text()
+    original_content = md_file.read_text()
 
     # Strip images (markdown and HTML)
-    content = image_pattern.sub('', content)
+    content = image_pattern.sub('', original_content)
     content = html_img_pattern.sub('', content)
 
     def rewrite(match):
@@ -370,7 +370,7 @@ for md_file in refs_dir.rglob("*.md"):
         return f'[{text}]({rel}{anchor})'
 
     new_content = link_pattern.sub(rewrite, content)
-    if new_content != content:
+    if new_content != original_content:
         md_file.write_text(new_content)
         changed += 1
 
