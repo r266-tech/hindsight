@@ -726,6 +726,18 @@ export class HindsightClient {
             throw new Error(`deleteMentalModel failed: ${JSON.stringify(response.error)}`);
         }
     }
+
+    /**
+     * Get the change history of a mental model.
+     */
+    async getMentalModelHistory(bankId: string, mentalModelId: string): Promise<any> {
+        const response = await sdk.getMentalModelHistory({
+            client: this.client,
+            path: { bank_id: bankId, mental_model_id: mentalModelId },
+        });
+
+        return this.validateResponse(response, 'getMentalModelHistory');
+    }
 }
 
 // Re-export types for convenience
