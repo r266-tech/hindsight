@@ -67,6 +67,13 @@ def fq_table(table_name: str) -> str:
     return f"{get_current_schema()}.{table_name}"
 
 
+def _json_default(obj: Any) -> str:
+    """JSON serializer for types commonly carried through async task payloads."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
 # Tables that must be schema-qualified (for runtime validation)
 _PROTECTED_TABLES = frozenset(
     [
@@ -7428,9 +7435,9 @@ class MemoryEngine(MemoryEngineInterface):
                 operation_id,
                 bank_id,
                 operation_type,
-                json.dumps(result_metadata or {}),
+                json.dumps(result_metadata or {}, default=_json_default),
                 "pending",
-                json.dumps(full_payload),
+                json.dumps(full_payload, default=_json_default),
             )
 
         # For SyncTaskBackend: executes the task immediately.
