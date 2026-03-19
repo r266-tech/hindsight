@@ -593,6 +593,9 @@ function CreateMentalModelDialog({
     maxTokens: "2048",
     tags: "",
     autoRefresh: false,
+    factTypes: [] as Array<"world" | "experience" | "observation">,
+    excludeMentalModels: false,
+    excludeMentalModelIds: "",
   });
 
   const handleCreate = async () => {
@@ -608,13 +611,23 @@ function CreateMentalModelDialog({
       const maxTokens = parseInt(form.maxTokens) || 2048;
 
       // Submit mental model creation - content will be generated in background
+      const excludeIds = form.excludeMentalModelIds
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
       await client.createMentalModel(currentBank, {
         id: form.id.trim() || undefined,
         name: form.name.trim(),
         source_query: form.sourceQuery.trim(),
         tags: tags.length > 0 ? tags : undefined,
         max_tokens: maxTokens,
-        trigger: { refresh_after_consolidation: form.autoRefresh },
+        trigger: {
+          refresh_after_consolidation: form.autoRefresh,
+          fact_types: form.factTypes.length > 0 ? form.factTypes : undefined,
+          exclude_mental_models: form.excludeMentalModels || undefined,
+          exclude_mental_model_ids: excludeIds.length > 0 ? excludeIds : undefined,
+        },
       });
 
       setForm({
@@ -624,6 +637,9 @@ function CreateMentalModelDialog({
         maxTokens: "2048",
         tags: "",
         autoRefresh: false,
+        factTypes: [],
+        excludeMentalModels: false,
+        excludeMentalModelIds: "",
       });
       onCreated();
     } catch (error) {
@@ -645,6 +661,9 @@ function CreateMentalModelDialog({
             maxTokens: "2048",
             tags: "",
             autoRefresh: false,
+            factTypes: [],
+            excludeMentalModels: false,
+            excludeMentalModelIds: "",
           });
           onClose();
         }
@@ -732,6 +751,64 @@ function CreateMentalModelDialog({
           <p className="text-xs text-muted-foreground -mt-2 ml-6">
             Automatically refresh this mental model when memories are consolidated.
           </p>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Fact Types <span className="text-muted-foreground font-normal">(optional)</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {(["world", "experience", "observation"] as const).map((ft) => (
+                <label key={ft} className="flex items-center space-x-1.5 cursor-pointer">
+                  <Checkbox
+                    checked={form.factTypes.includes(ft)}
+                    onCheckedChange={(checked) =>
+                      setForm({
+                        ...form,
+                        factTypes: checked
+                          ? [...form.factTypes, ft]
+                          : form.factTypes.filter((f) => f !== ft),
+                      })
+                    }
+                  />
+                  <span className="text-sm capitalize">{ft}</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Restrict which fact types are used when refreshing. Leave empty to use all types.
+            </p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="exclude-mental-models"
+              checked={form.excludeMentalModels}
+              onCheckedChange={(checked) =>
+                setForm({ ...form, excludeMentalModels: checked === true })
+              }
+            />
+            <label
+              htmlFor="exclude-mental-models"
+              className="text-sm font-medium text-foreground cursor-pointer"
+            >
+              Exclude other mental models
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2 ml-6">
+            Skip searching other mental models when refreshing this one.
+          </p>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Exclude Mental Model IDs{" "}
+              <span className="text-muted-foreground font-normal">(optional)</span>
+            </label>
+            <Input
+              value={form.excludeMentalModelIds}
+              onChange={(e) => setForm({ ...form, excludeMentalModelIds: e.target.value })}
+              placeholder="e.g., model-a, model-b (comma-separated)"
+            />
+            <p className="text-xs text-muted-foreground">
+              Specific mental model IDs to exclude when refreshing.
+            </p>
+          </div>
         </div>
 
         <DialogFooter>
@@ -776,6 +853,12 @@ function UpdateMentalModelDialog({
     maxTokens: String(mentalModel.max_tokens || 2048),
     tags: mentalModel.tags.join(", "),
     autoRefresh: mentalModel.trigger?.refresh_after_consolidation || false,
+    factTypes:
+      (mentalModel.trigger?.fact_types as
+        | Array<"world" | "experience" | "observation">
+        | undefined) || [],
+    excludeMentalModels: mentalModel.trigger?.exclude_mental_models || false,
+    excludeMentalModelIds: (mentalModel.trigger?.exclude_mental_model_ids || []).join(", "),
   });
 
   // Reset form when mental model changes or dialog opens
@@ -787,6 +870,12 @@ function UpdateMentalModelDialog({
         maxTokens: String(mentalModel.max_tokens || 2048),
         tags: mentalModel.tags.join(", "),
         autoRefresh: mentalModel.trigger?.refresh_after_consolidation || false,
+        factTypes:
+          (mentalModel.trigger?.fact_types as
+            | Array<"world" | "experience" | "observation">
+            | undefined) || [],
+        excludeMentalModels: mentalModel.trigger?.exclude_mental_models || false,
+        excludeMentalModelIds: (mentalModel.trigger?.exclude_mental_model_ids || []).join(", "),
       });
     }
   }, [open, mentalModel]);
@@ -803,12 +892,22 @@ function UpdateMentalModelDialog({
 
       const maxTokens = parseInt(form.maxTokens) || 2048;
 
+      const excludeIds = form.excludeMentalModelIds
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
       const updated = await client.updateMentalModel(currentBank, mentalModel.id, {
         name: form.name.trim(),
         source_query: form.sourceQuery.trim(),
         tags: tags.length > 0 ? tags : undefined,
         max_tokens: maxTokens,
-        trigger: { refresh_after_consolidation: form.autoRefresh },
+        trigger: {
+          refresh_after_consolidation: form.autoRefresh,
+          fact_types: form.factTypes.length > 0 ? form.factTypes : undefined,
+          exclude_mental_models: form.excludeMentalModels || undefined,
+          exclude_mental_model_ids: excludeIds.length > 0 ? excludeIds : undefined,
+        },
       });
 
       onUpdated(updated);
@@ -895,6 +994,64 @@ function UpdateMentalModelDialog({
           <p className="text-xs text-muted-foreground -mt-2 ml-6">
             Automatically refresh this mental model when memories are consolidated.
           </p>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Fact Types <span className="text-muted-foreground font-normal">(optional)</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {(["world", "experience", "observation"] as const).map((ft) => (
+                <label key={ft} className="flex items-center space-x-1.5 cursor-pointer">
+                  <Checkbox
+                    checked={form.factTypes.includes(ft)}
+                    onCheckedChange={(checked) =>
+                      setForm({
+                        ...form,
+                        factTypes: checked
+                          ? [...form.factTypes, ft]
+                          : form.factTypes.filter((f) => f !== ft),
+                      })
+                    }
+                  />
+                  <span className="text-sm capitalize">{ft}</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Restrict which fact types are used when refreshing. Leave empty to use all types.
+            </p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="update-exclude-mental-models"
+              checked={form.excludeMentalModels}
+              onCheckedChange={(checked) =>
+                setForm({ ...form, excludeMentalModels: checked === true })
+              }
+            />
+            <label
+              htmlFor="update-exclude-mental-models"
+              className="text-sm font-medium text-foreground cursor-pointer"
+            >
+              Exclude other mental models
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2 ml-6">
+            Skip searching other mental models when refreshing this one.
+          </p>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Exclude Mental Model IDs{" "}
+              <span className="text-muted-foreground font-normal">(optional)</span>
+            </label>
+            <Input
+              value={form.excludeMentalModelIds}
+              onChange={(e) => setForm({ ...form, excludeMentalModelIds: e.target.value })}
+              placeholder="e.g., model-a, model-b (comma-separated)"
+            />
+            <p className="text-xs text-muted-foreground">
+              Specific mental model IDs to exclude when refreshing.
+            </p>
+          </div>
         </div>
 
         <DialogFooter>
