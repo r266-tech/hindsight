@@ -7,32 +7,34 @@ image: /img/blog/claude-code-telegram.png
 hide\_table\_of\_contents: true
 ---
 
-Anthropic just launched **Channels** for Claude Code — persistent background sessions connected to messaging platforms. This means Claude Code can now operate as a fully autonomous agent, reachable also from your phone, always running against your codebase.
+Anthropic just launched **Channels** for Claude Code: Claude Code sessions connected to messaging platforms. This means Claude Code can now operate as a fully autonomous agent, reachable also from your phone, always running against your codebase (and not just it).
 
-Claude Code has a built-in memory system based on markdown files (`CLAUDE.md`, auto-memory), and it works well for static preferences and project instructions. But it wasn't designed for conversational memory — it doesn't extract facts from your discussions, doesn't recall relevant context by semantic similarity, and doesn't build up structured knowledge over time. Close the session, and some richness and depth of what you discussed is gone.
+Claude Code has a built-in memory system based on markdown files (`CLAUDE.md`, auto-memory), and it works very well for static preferences and project instructions. But it wasn't designed for conversational memory — it doesn't extract facts from your discussions, doesn't recall relevant context by semantic similarity, and doesn't build up structured knowledge over time. Close the session, and some richness and depth of what you discussed is gone.
 
-This guide fixes that. We'll set up Claude Code on Telegram and wire it to [Hindsight][1] for true long-term memory — automatic fact extraction, semantic recall, and a knowledge base that grows with every conversation. The result is a persistent AI coding assistant you can talk to from anywhere, that actually learns from your interactions.
+This guide fixes that. We'll set up Claude Code on Telegram and wire it to [Hindsight][1] for true long-term memory — automatic fact extraction, semantic recall, and a knowledge base that grows with every conversation. The result is a persistent AI (coding) assistant you can talk to from anywhere, that actually learns from your interactions.
 
 If you've been watching what [Openclaw][2] does with Hindsight — this is the same idea, built entirely on Claude Code.
 
 <!-- truncate -->
 
+
 ## What We're Building
 
 By the end of this tutorial, you'll have:
 
-1. **A Telegram bot** connected to Claude Code — send it messages from your phone, get responses backed by your full codebase
-2. **Automatic memory** powered by Hindsight — every conversation is retained, relevant context is recalled on every prompt
+1. **A Telegram bot** connected to Claude Code — send it messages from your phone, get responses backed by your full codebase and your filesystem
+2. **Automatic memory** powered by Hindsight — every conversation is retained, relevant context is recalled and injected on every prompt
 3. **A persistent agent** that gets smarter over time — it remembers your projects, your preferences, your architectural decisions
 
-The stack is simple: Claude Code does the thinking, Telegram provides the interface, Hindsight provides the memory. No custom code, no infrastructure beyond what runs on your machine.
+The stack is simple: Claude Code does the thinking, Telegram provides the interface, Hindsight provides the memory. No custom code, no mandatory infrastructure beyond what runs on your machine.
+
 
 ## Part 1: Claude Code on Telegram
 
 ### Prerequisites
 
-- **Claude Code** installed (`curl -fsSL https://claude.ai/install.sh | bash`)
-- **Bun** installed (`curl -fsSL https://bun.sh/install | bash`) — the Telegram plugin requires Bun specifically; Node.js and Deno are not supported
+- **Claude Code** installed (`brew install claude-code` on macOS, or `curl -fsSL https://claude.ai/install.sh | bash`)
+- **Bun** installed (`brew install oven-sh/bun/bun` on macOS, or `curl -fsSL https://bun.sh/install | bash`) — the Telegram plugin requires Bun specifically; Node.js and Deno are not supported
 - A **Telegram account**
 
 ### Step 1: Create a Telegram Bot
@@ -120,19 +122,28 @@ There are two approaches:
 
 For a truly autonomous Telegram agent, option 1 is the practical choice. Just make sure your allowlist is locked down first.
 
+If you go with option 1, **mitigate the risk with rules in your `CLAUDE.md`**. Since the built-in permission gates are bypassed, you need to define your own safety boundaries. A practical pattern is a tiered system:
+
+- **Tier 1 (free)**: read-only operations — reading files, searching code, browsing the web, git status/log/diff. No confirmation needed.
+- **Tier 2 (ask first)**: anything that creates, modifies, or deletes state — file writes, git commits, sending messages, installing packages. The agent should describe the action on Telegram and wait for your explicit approval before proceeding.
+- **Tier 3 (prohibited)**: irreversible or high-risk operations — force pushes, recursive deletions, exposing secrets, modifying the CLAUDE.md itself. These should never be executed by the bot itself, even if requested.
+
+This way your agent operates autonomously for safe tasks, asks before acting on anything with side effects, and has hard limits on destructive operations. The rules live in `CLAUDE.md`, so they persist across sessions and are loaded automatically.
+
 ### What You Have So Far
 
-A working Claude Code agent on Telegram. You can send it messages from your phone, and it responds with full access to your codebase — reading files, running commands, making changes.
+A working Claude Code agent on Telegram. You can send it messages from your phone, and it responds with full access to your codebase and filesystem — reading files, running commands, making changes.
 
 But the memory is limited. Claude Code's built-in markdown memory captures preferences and instructions, but it doesn't retain the substance of your conversations — the decisions you explored, the trade-offs you weighed, the context behind why things are the way they are. Restart the session, and that conversational depth is lost. For quick tasks, that's fine. For a long-running assistant, it's a ceiling.
 
 Let's fix that.
 
+
 ## Part 2: Adding Long-Term Memory with Hindsight
 
 [Hindsight][5] is a biomimetic memory engine — it doesn't just store conversations, it *understands* them. When you retain a conversation, Hindsight extracts discrete, structured facts: decisions, preferences, relationships, technical context. When you recall, it retrieves facts by semantic relevance to your current query, not by timestamp or keyword. The result is memory that behaves more like human recollection than a search index — surfacing what matters, filtering out what doesn't.
 
-The [Openclaw integration][6] has been doing this for Openclaw agents since day one. Now there's a [Claude Code integration][7] that brings the same capability to Claude Code.
+The [Openclaw integration][6] has been doing this for Openclaw agents for months. Now there's a [Claude Code integration][7] that brings the same capability to Claude Code.
 
 The plugin hooks into Claude Code's lifecycle:
 
@@ -231,7 +242,7 @@ These are the settings that shape how your agent remembers. The defaults work we
 | `recallBudget`       | `"mid"`              | How hard Hindsight searches for relevant memories. `"low"` for speed, `"high"` for thoroughness.      |
 | `recallMaxTokens`    | `1024`               | Max tokens of memory context injected per prompt.                                                     |
 
-The full configuration reference with all 34 options is in the [plugin README][9].
+The full configuration reference is in the [plugin README][9].
 
 ### Step 11: Relaunch and Verify
 
@@ -259,7 +270,6 @@ Turn off debug mode once you've verified:
 }
 ```
 
----
 
 ## What This Looks Like in Practice
 
@@ -277,11 +287,14 @@ Here's what that progression looks like:
 
 **Month 2**: Your bot has retained hundreds of conversations. Hindsight has extracted thousands of discrete facts. The agent knows your codebase intimately — not just the code (it can always read that), but the *decisions behind the code*. Why you chose Postgres over SQLite. Why the auth middleware was rewritten. Who asked for the API change. Context that lives nowhere in the code itself, distilled into structured memory.
 
-This is the difference between a stateless tool and a contextual collaborator. Claude Code provides the reasoning and the codebase access. Hindsight provides the continuity — the ability to accumulate understanding over time, session after session, and bring exactly the right slice of that understanding to bear on each new question. Together, they produce an agent whose quality of response improves the more you use it.
+This is the difference between a stateless tool and a contextual collaborator. Claude Code provides the reasoning and the codebase/filesystem access. Hindsight provides the continuity — the ability to accumulate understanding over time, session after session, and bring exactly the right slice of that understanding to bear on each new question. Together, they produce an agent whose quality of response improves the more you use it.
+
 
 ## Why Claude Code
 
-If you know [Openclaw][10], this will sound familiar. Openclaw has had Hindsight integration for months — it's what gives some Openclaw agents their memory. This setup achieves the same result using a different stack. The question is: which fits your workflow better?
+If you know [Openclaw][10], this will sound familiar. Openclaw has had Hindsight integration for months — it's what gives Openclaw agents their memory. This setup achieves the same result using a different stack. The question is: which fits your workflow better?
+
+But first, let's acknowledge the elephant in the room. Channels — Claude Code sessions connected to messaging platforms, with persistent execution, plugin hooks, and autonomous operation — is a capability that Openclaw pioneered. The architectural approach is entirely different (hooks and plugins vs. a gateway runtime, Python scripts vs. npm packages, file-based state vs. in-memory), but the user experience is strikingly convergent: an AI agent in your chat, with access to your codebase, that you can talk to from your phone. This is not a coincidence. The release of Channels signals that Anthropic sees agent-native messaging as a first-class capability — and the timing, following Openclaw's creator joining OpenAI, makes the strategic intent hard to miss. For users, this is unambiguously good news: the pattern is now validated by both the community and a major AI lab, and the ecosystem competition will push both platforms forward.
 
 The choice depends on your needs and what you're already using.
 
@@ -306,6 +319,7 @@ For developers who are already invested in Claude and want a streamlined, single
 
 The Hindsight plugin for Claude Code is a [complete port of the Openclaw plugin][11] — same architecture, same configuration options, same recall/retain logic. If you're already using Hindsight with Openclaw, the concepts are identical. The difference is the foundation you're building on.
 
+
 ## Dynamic Memory Banks
 
 For advanced setups, the plugin supports dynamic bank IDs — isolating memory per project, per channel, or per user:
@@ -318,6 +332,7 @@ For advanced setups, the plugin supports dynamic bank IDs — isolating memory p
 ```
 
 With this configuration, each project directory gets its own memory bank. Your frontend project's memories stay separate from your backend project's memories. You can also add `"channel"` and `"user"` dimensions for multi-user or multi-channel agents, by setting `HINDSIGHT_CHANNEL_ID` and `HINDSIGHT_USER_ID` environment variables.
+
 
 ## Troubleshooting
 
@@ -332,6 +347,7 @@ With this configuration, each project directory gets its own memory bank. Your f
 **Hindsight daemon not starting**: Ensure `uvx` is on your PATH (`pip install uv` or `brew install uv`). Check that an LLM API key is set. Review logs at `~/.hindsight/profiles/claude-code.log`.
 
 **High latency on recall**: The recall hook has a 12-second timeout (the API call itself times out at 10s, with margin for processing). Try `"recallBudget": "low"` for faster responses, or reduce `"recallMaxTokens"`.
+
 
 ## What's Next
 
