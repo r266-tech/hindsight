@@ -8,8 +8,21 @@ the closure at construction time.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 from typing import Any
+
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
+
+def _run_in_thread(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    """Run a callable in a dedicated thread with a clean event loop.
+
+    Strands runs tools inside its own asyncio event loop. The hindsight client
+    uses asyncio internally (including asyncio.timeout), which conflicts with
+    an already-running loop. Running in a separate thread gives a fresh loop.
+    """
+    return _executor.submit(fn, *args, **kwargs).result()
 
 from hindsight_client import Hindsight
 from strands import tool
@@ -129,7 +142,7 @@ def create_hindsight_tools(
                 retain_kwargs: dict[str, Any] = {"bank_id": bank_id, "content": content}
                 if effective_tags:
                     retain_kwargs["tags"] = effective_tags
-                resolved_client.retain(**retain_kwargs)
+                _run_in_thread(resolved_client.retain, **retain_kwargs)
                 return "Memory stored successfully."
             except HindsightError:
                 raise
@@ -158,7 +171,7 @@ def create_hindsight_tools(
                 if effective_recall_tags:
                     recall_kwargs["tags"] = effective_recall_tags
                     recall_kwargs["tags_match"] = effective_recall_tags_match
-                response = resolved_client.recall(**recall_kwargs)
+                response = _run_in_thread(resolved_client.recall, **recall_kwargs)
                 if not response.results:
                     return "No relevant memories found."
                 lines = []
@@ -188,7 +201,7 @@ def create_hindsight_tools(
                     "query": query,
                     "budget": effective_budget,
                 }
-                response = resolved_client.reflect(**reflect_kwargs)
+                response = _run_in_thread(resolved_client.reflect, **reflect_kwargs)
                 return response.text or "No relevant memories found."
             except HindsightError:
                 raise
@@ -252,7 +265,7 @@ def memory_instructions(
         if tags:
             recall_kwargs["tags"] = tags
             recall_kwargs["tags_match"] = tags_match
-        response = resolved_client.recall(**recall_kwargs)
+        response = _run_in_thread(resolved_client.recall, **recall_kwargs)
         results = response.results[:max_results] if response.results else []
         if not results:
             return ""
