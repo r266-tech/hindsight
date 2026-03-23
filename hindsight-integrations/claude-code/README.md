@@ -16,7 +16,8 @@ export OPENAI_API_KEY="sk-your-key"
 # Option B: Anthropic (auto-detected)
 export ANTHROPIC_API_KEY="your-key"
 
-# Option C: No API key needed (uses Claude Code's own model)
+# Option C: No API key needed (uses Claude Code's own model — personal/local use only)
+# See: https://vectorize.io/hindsight/developer/models#claude-code-setup-claude-promax
 export HINDSIGHT_LLM_PROVIDER=claude-code
 
 # Option D: Connect to an external Hindsight server instead of running locally
