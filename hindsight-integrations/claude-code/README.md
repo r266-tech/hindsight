@@ -9,16 +9,17 @@ Biomimetic long-term memory for [Claude Code](https://docs.anthropic.com/en/docs
 claude plugin marketplace add vectorize-io/hindsight --sparse hindsight-integrations
 claude plugin install hindsight-memory
 
-# 2. Configure your LLM provider for memory extraction
-# Option A: OpenAI (auto-detected)
-export OPENAI_API_KEY="sk-your-key"
+# 2. Create your personal settings file (stable path, persists across updates)
+mkdir -p ~/.claude/plugins/data/hindsight-memory-hindsight
 
-# Option B: Anthropic (auto-detected)
-export ANTHROPIC_API_KEY="your-key"
+# Option A: External Hindsight server
+echo '{"hindsightApiUrl": "https://your-hindsight-server.com"}' \
+  > ~/.claude/plugins/data/hindsight-memory-hindsight/settings.json
 
-# Option C: Connect to an external Hindsight server (no local LLM needed)
-# Edit the installed settings.json (~/.claude/plugins/cache/hindsight/hindsight-memory/<version>/settings.json)
-# Set: "hindsightApiUrl": "https://your-hindsight-server.com"
+# Option B: Local daemon — just set an LLM API key, the plugin starts it automatically
+export OPENAI_API_KEY="sk-your-key"       # auto-detected
+# or
+export ANTHROPIC_API_KEY="your-key"       # auto-detected
 
 # 3. Start Claude Code — the plugin activates automatically
 claude

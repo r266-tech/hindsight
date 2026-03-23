@@ -82,3 +82,39 @@ class TestLoadConfig:
         monkeypatch.setenv("HINDSIGHT_API_URL", "http://myserver:8080")
         cfg = load_config()
         assert cfg["hindsightApiUrl"] == "http://myserver:8080"
+
+    def test_user_settings_json_overrides_plugin_settings(self, tmp_path, monkeypatch):
+        plugin_root = tmp_path / "plugin"
+        plugin_data = tmp_path / "data"
+        plugin_root.mkdir()
+        plugin_data.mkdir()
+
+        # Plugin default ships with "low"
+        (plugin_root / "settings.json").write_text(json.dumps({"recallBudget": "low"}))
+        # User overrides to "high"
+        (plugin_data / "settings.json").write_text(json.dumps({"recallBudget": "high"}))
+
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+        monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(plugin_data))
+        cfg = load_config()
+        assert cfg["recallBudget"] == "high"
+
+    def test_user_settings_json_without_plugin_data_env(self, tmp_path, monkeypatch):
+        """When CLAUDE_PLUGIN_DATA is not set, user settings.json is skipped gracefully."""
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
+        monkeypatch.delenv("CLAUDE_PLUGIN_DATA", raising=False)
+        cfg = load_config()
+        assert cfg["recallBudget"] == "mid"  # default
+
+    def test_env_var_wins_over_user_settings_json(self, tmp_path, monkeypatch):
+        plugin_root = tmp_path / "plugin"
+        plugin_data = tmp_path / "data"
+        plugin_root.mkdir()
+        plugin_data.mkdir()
+
+        (plugin_data / "settings.json").write_text(json.dumps({"recallBudget": "low"}))
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+        monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(plugin_data))
+        monkeypatch.setenv("HINDSIGHT_RECALL_BUDGET", "high")
+        cfg = load_config()
+        assert cfg["recallBudget"] == "high"

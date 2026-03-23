@@ -88,23 +88,44 @@ def _cast_env(value: str, typ):
         return None
 
 
+def _load_settings_file(path: str, config: dict) -> None:
+    """Merge a settings.json file into config in-place. Silently skips if missing."""
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path) as f:
+            file_config = json.load(f)
+        config.update({k: v for k, v in file_config.items() if v is not None})
+    except (json.JSONDecodeError, OSError) as e:
+        debug_log(config, f"Failed to load {path}: {e}")
+
+
 def load_config() -> dict:
-    """Load plugin configuration from settings.json + env overrides."""
+    """Load plugin configuration from settings.json + env overrides.
+
+    Loading order (later entries win):
+      1. Built-in defaults
+      2. Plugin default settings.json  (CLAUDE_PLUGIN_ROOT/settings.json)
+      3. User settings.json            (CLAUDE_PLUGIN_DATA/settings.json)
+      4. Environment variable overrides
+
+    The user settings.json at CLAUDE_PLUGIN_DATA is the recommended way to
+    configure the plugin — it lives at a stable, version-independent path and
+    persists across plugin updates.
+    """
     config = dict(DEFAULTS)
 
-    # Find settings.json relative to plugin root
+    # 1. Plugin default settings.json (ships with the plugin, version-specific path)
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     if not plugin_root:
         plugin_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    _load_settings_file(os.path.join(plugin_root, "settings.json"), config)
 
-    settings_path = os.path.join(plugin_root, "settings.json")
-    if os.path.exists(settings_path):
-        try:
-            with open(settings_path) as f:
-                file_config = json.load(f)
-            config.update({k: v for k, v in file_config.items() if v is not None})
-        except (json.JSONDecodeError, OSError) as e:
-            debug_log(config, f"Failed to load settings.json: {e}")
+    # 2. User settings.json — stable path, persists across plugin updates
+    #    Location: ~/.claude/plugins/data/<plugin-id>/settings.json
+    plugin_data = os.environ.get("CLAUDE_PLUGIN_DATA", "")
+    if plugin_data:
+        _load_settings_file(os.path.join(plugin_data, "settings.json"), config)
 
     # Apply environment variable overrides
     for env_name, (key, typ) in ENV_OVERRIDES.items():
