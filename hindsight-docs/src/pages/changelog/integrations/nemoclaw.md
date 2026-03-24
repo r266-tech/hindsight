@@ -2,13 +2,11 @@
 hide_table_of_contents: true
 ---
 
-# NemoClaw Integration Changelog
+import PageHero from '@site/src/components/PageHero';
 
-Changelog for [`@vectorize-io/hindsight-nemoclaw`](https://www.npmjs.com/package/@vectorize-io/hindsight-nemoclaw).
+<PageHero title="NemoClaw Changelog" subtitle="@vectorize-io/hindsight-nemoclaw — persistent memory for NemoClaw sandboxed agents." />
 
-For the source code, see [`hindsight-integrations/nemoclaw`](https://github.com/vectorize-io/hindsight/tree/main/hindsight-integrations/nemoclaw).
-
-← [Back to main changelog](/changelog)
+[← NemoClaw integration](/sdks/integrations/nemoclaw)
 
 ## [0.1.1](https://github.com/vectorize-io/hindsight/tree/integrations/nemoclaw/v0.1.1)
 

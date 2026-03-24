@@ -499,24 +499,28 @@ class MemoryEngine(MemoryEngineInterface):
         """The configured tenant extension, if any."""
         return self._tenant_extension
 
-    async def _validate_operation(self, validation_coro) -> None:
+    async def _validate_operation(self, validation_coro) -> "ValidationResult | None":
         """
         Run validation if an operation validator is configured.
 
         Args:
             validation_coro: Coroutine that returns a ValidationResult
 
+        Returns:
+            The ValidationResult (may contain enrichment fields), or None if no validator.
+
         Raises:
             OperationValidationError: If validation fails
         """
         if self._operation_validator is None:
-            return
+            return None
 
-        from hindsight_api.extensions import OperationValidationError
+        from hindsight_api.extensions import OperationValidationError, ValidationResult
 
         result = await validation_coro
         if not result.allowed:
             raise OperationValidationError(result.reason or "Operation not allowed", result.status_code)
+        return result
 
     async def _authenticate_tenant(self, request_context: "RequestContext | None") -> str:
         """
@@ -543,6 +547,12 @@ class MemoryEngine(MemoryEngineInterface):
         # The task was already authenticated at submission time, and execute_task sets _current_schema
         # from the task's _schema field.
         if request_context.internal:
+            return _current_schema.get()
+
+        # For MCP requests already authenticated via MCP_AUTH_TOKEN, skip tenant re-validation.
+        # The MCP transport layer already verified the token; re-validating against the tenant
+        # extension would fail when MCP_AUTH_TOKEN and TENANT_API_KEY differ.
+        if request_context.mcp_authenticated:
             return _current_schema.get()
 
         # Authenticate through tenant extension (always set, may be default no-auth extension)
@@ -2046,7 +2056,9 @@ class MemoryEngine(MemoryEngineInterface):
                 fact_type_override=fact_type_override,
                 confidence_score=confidence_score,
             )
-            await self._validate_operation(self._operation_validator.validate_retain(ctx))
+            result = await self._validate_operation(self._operation_validator.validate_retain(ctx))
+            if result and result.contents is not None:
+                contents = result.contents
 
         # Apply batch-level document_id to contents that don't have their own (backwards compatibility)
         if document_id:
@@ -2413,8 +2425,18 @@ class MemoryEngine(MemoryEngineInterface):
                 max_entity_tokens=max_entity_tokens,
                 include_chunks=include_chunks,
                 max_chunk_tokens=max_chunk_tokens,
+                tags=tags,
+                tags_match=tags_match,
+                tag_groups=tag_groups,
             )
-            await self._validate_operation(self._operation_validator.validate_recall(ctx))
+            result = await self._validate_operation(self._operation_validator.validate_recall(ctx))
+            if result:
+                if result.tags is not None:
+                    tags = result.tags
+                if result.tags_match is not None:
+                    tags_match = result.tags_match
+                if result.tag_groups is not None:
+                    tag_groups = result.tag_groups
 
         # Map budget enum to thinking_budget number (default to MID if None)
         budget_mapping = {Budget.LOW: 100, Budget.MID: 300, Budget.HIGH: 1000}
@@ -5206,6 +5228,7 @@ class MemoryEngine(MemoryEngineInterface):
         effective_budget = budget or Budget.LOW
         max_iterations = max(1, int(base_max_iterations * budget_multipliers.get(effective_budget, 1.0)))
         max_context_tokens = config.reflect_max_context_tokens
+        wall_timeout = config.reflect_wall_timeout
 
         # Run agentic loop - acquire connections only when needed for DB operations
         # (not held during LLM calls which can be slow)
@@ -5310,31 +5333,52 @@ class MemoryEngine(MemoryEngineInterface):
             span_context = None
 
         try:
-            agent_result = await run_reflect_agent(
-                llm_config=self._reflect_llm_config.with_config(resolved_reflect_config),
-                bank_id=bank_id,
-                query=query,
-                bank_profile=profile,
-                search_mental_models_fn=search_mental_models_fn,
-                search_observations_fn=search_observations_fn,
-                recall_fn=recall_fn,
-                expand_fn=expand_fn,
-                context=context,
-                max_iterations=max_iterations,
-                max_tokens=max_tokens,
-                response_schema=response_schema,
-                directives=directives,
-                has_mental_models=has_mental_models,
-                include_observations=include_observations,
-                include_recall=include_recall,
-                budget=effective_budget,
-                max_context_tokens=max_context_tokens,
-            )
+            try:
+                agent_result = await asyncio.wait_for(
+                    run_reflect_agent(
+                        llm_config=self._reflect_llm_config.with_config(resolved_reflect_config),
+                        bank_id=bank_id,
+                        query=query,
+                        bank_profile=profile,
+                        search_mental_models_fn=search_mental_models_fn,
+                        search_observations_fn=search_observations_fn,
+                        recall_fn=recall_fn,
+                        expand_fn=expand_fn,
+                        context=context,
+                        max_iterations=max_iterations,
+                        max_tokens=max_tokens,
+                        response_schema=response_schema,
+                        directives=directives,
+                        has_mental_models=has_mental_models,
+                        include_observations=include_observations,
+                        include_recall=include_recall,
+                        budget=effective_budget,
+                        max_context_tokens=max_context_tokens,
+                    ),
+                    timeout=wall_timeout,
+                )
+            except asyncio.TimeoutError:
+                total_time = time.time() - reflect_start
+                logger.error(
+                    "[REFLECT %s] Wall-clock timeout after %.1fs (limit: %ss) for query: %.50s...",
+                    reflect_id,
+                    total_time,
+                    wall_timeout,
+                    query,
+                )
+                raise TimeoutError(
+                    f"Reflect operation timed out after {wall_timeout} seconds. "
+                    f"Consider reducing the budget or simplifying the query."
+                )
 
             total_time = time.time() - reflect_start
             logger.info(
-                f"[REFLECT {reflect_id}] Complete: {len(agent_result.text)} chars, "
-                f"{agent_result.iterations} iterations, {agent_result.tools_called} tool calls | {total_time:.3f}s"
+                "[REFLECT %s] Complete: %d chars, %d iterations, %d tool calls | %.3fs",
+                reflect_id,
+                len(agent_result.text),
+                agent_result.iterations,
+                agent_result.tools_called,
+                total_time,
             )
 
             # Convert agent tool trace to ToolCallTrace objects
@@ -7505,7 +7549,9 @@ class MemoryEngine(MemoryEngineInterface):
                 contents=[dict(c) for c in contents],
                 request_context=request_context,
             )
-            await self._validate_operation(self._operation_validator.validate_retain(ctx))
+            result = await self._validate_operation(self._operation_validator.validate_retain(ctx))
+            if result and result.contents is not None:
+                contents = result.contents
 
         # Validate no duplicate document_ids in the batch
         # Having duplicate document_ids causes race conditions in document upserts during parallel processing

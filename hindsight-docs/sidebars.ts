@@ -186,6 +186,12 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'doc',
+          id: 'sdks/integrations/claude-code',
+          label: 'Claude Code',
+          customProps: { icon: '/img/icons/claudecode.svg' },
+        },
+        {
+          type: 'doc',
           id: 'sdks/integrations/openclaw',
           label: 'OpenClaw',
           customProps: { icon: '/img/icons/openclaw.png' },
@@ -231,6 +237,12 @@ const sidebars: SidebarsConfig = {
           id: 'sdks/integrations/langgraph',
           label: 'LangGraph / LangChain',
           customProps: { icon: '/img/icons/langgraph.png' },
+        },
+        {
+          type: 'doc',
+          id: 'sdks/integrations/nemoclaw',
+          label: 'NemoClaw',
+          customProps: { icon: '/img/icons/nemoclaw.png' },
         },
         {
           type: 'doc',
