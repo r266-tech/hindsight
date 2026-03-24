@@ -83,49 +83,53 @@ This pulls in `llama-index-core` and `hindsight-client` as dependencies.
 
 ---
 
-## Step 3 -- Create the Memory Bank
+## Step 3 -- Create the Memory Bank and Agent
 
-Banks must exist before use. Create one per user:
+Banks must exist before use. Since LlamaIndex agents are async, wrap everything in `asyncio.run()` for scripts (or use top-level `await` in notebooks):
 
 ```python
+import asyncio
 from hindsight_client import Hindsight
-
-client = Hindsight(base_url="http://localhost:8888")
-client.create_bank("user-123", name="User 123 Memory")
-```
-
-## Step 4 -- Create an Agent with Memory
-
-```python
 from hindsight_llamaindex import HindsightToolSpec
 from llama_index.llms.openai import OpenAI
 from llama_index.core.agent import ReActAgent
 
-spec = HindsightToolSpec(
-    client=client,
-    bank_id="user-123",
-    tags=["source:chat"],
-    budget="mid",
-)
-tools = spec.to_tool_list()
+async def main():
+    client = Hindsight(base_url="http://localhost:8888")
 
-agent = ReActAgent(
-    tools=tools,
-    llm=OpenAI(model="gpt-4o-mini"),
-    system_prompt=(
-        "You are a helpful assistant with long-term memory. "
-        "Use retain_memory to store important facts. "
-        "Use recall_memory to search your memory before answering."
-    ),
-)
+    # Create the memory bank (one-time setup)
+    await client.acreate_bank("user-123", name="User 123 Memory")
 
-# Session 1: store preferences
-await agent.run("I'm a data scientist. I use Python, SQL, and VS Code with dark mode.")
+    spec = HindsightToolSpec(
+        client=client,
+        bank_id="user-123",
+        tags=["source:chat"],
+        budget="mid",
+    )
+    tools = spec.to_tool_list()
 
-# Session 2 (new agent instance, same bank_id): recall works
-agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o-mini"))
-response = await agent.run("What IDE do I use?")
-# → "You use VS Code with dark mode."
+    agent = ReActAgent(
+        tools=tools,
+        llm=OpenAI(model="gpt-4o-mini"),
+        system_prompt=(
+            "You are a helpful assistant with long-term memory. "
+            "Use retain_memory to store important facts. "
+            "Use recall_memory to search your memory before answering."
+        ),
+    )
+
+    # Session 1: store preferences
+    await agent.run(
+        "I'm a data scientist. I use Python, SQL, and VS Code with dark mode."
+    )
+
+    # Session 2 (new agent instance, same bank_id): recall works
+    agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o-mini"))
+    response = await agent.run("What IDE do I use?")
+    # → "You use VS Code with dark mode."
+    print(response)
+
+asyncio.run(main())
 ```
 
 That's it. Three tools, one bank, persistent memory.

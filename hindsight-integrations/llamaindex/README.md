@@ -20,21 +20,26 @@ pip install hindsight-llamaindex
 Use `HindsightToolSpec` directly for full control over tool creation.
 
 ```python
+import asyncio
 from hindsight_client import Hindsight
 from hindsight_llamaindex import HindsightToolSpec
 from llama_index.llms.openai import OpenAI
 from llama_index.core.agent import ReActAgent
 
-client = Hindsight(base_url="http://localhost:8888")
+async def main():
+    client = Hindsight(base_url="http://localhost:8888")
 
-# Create the memory bank first (one-time setup)
-client.create_bank("user-123", name="User 123 Memory")
+    # Create the memory bank first (one-time setup)
+    await client.acreate_bank("user-123", name="User 123 Memory")
 
-spec = HindsightToolSpec(client=client, bank_id="user-123")
-tools = spec.to_tool_list()
+    spec = HindsightToolSpec(client=client, bank_id="user-123")
+    tools = spec.to_tool_list()
 
-agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o"))
-response = await agent.run("Remember that I prefer dark mode")
+    agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o"))
+    response = await agent.run("Remember that I prefer dark mode")
+    print(response)
+
+asyncio.run(main())
 ```
 
 ### Selective Tools

@@ -25,38 +25,56 @@ pip install hindsight-llamaindex
 Use `HindsightToolSpec` directly for full control.
 
 ```python
+import asyncio
 from hindsight_client import Hindsight
 from hindsight_llamaindex import HindsightToolSpec
 from llama_index.llms.openai import OpenAI
 from llama_index.core.agent import ReActAgent
 
-client = Hindsight(base_url="http://localhost:8888")
+async def main():
+    client = Hindsight(base_url="http://localhost:8888")
 
-# Create the memory bank first (one-time setup)
-client.create_bank("user-123", name="User 123 Memory")
+    # Create the memory bank first (one-time setup)
+    await client.acreate_bank("user-123", name="User 123 Memory")
 
-spec = HindsightToolSpec(client=client, bank_id="user-123")
-tools = spec.to_tool_list()
+    spec = HindsightToolSpec(client=client, bank_id="user-123")
+    tools = spec.to_tool_list()
 
-agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o"))
+    agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o"))
+    response = await agent.run("Remember that I prefer dark mode")
+    print(response)
+
+asyncio.run(main())
+```
+
+:::tip Jupyter Notebooks
+In notebooks, use top-level `await` directly — no `asyncio.run()` needed:
+```python
+await client.acreate_bank("user-123", name="User 123 Memory")
 response = await agent.run("Remember that I prefer dark mode")
 ```
+:::
 
 ## Quick Start: Factory Function
 
 Use `create_hindsight_tools()` for a simpler API.
 
 ```python
+import asyncio
 from hindsight_client import Hindsight
 from hindsight_llamaindex import create_hindsight_tools
 from llama_index.llms.openai import OpenAI
 from llama_index.core.agent import ReActAgent
 
-client = Hindsight(base_url="http://localhost:8888")
-tools = create_hindsight_tools(client=client, bank_id="user-123")
+async def main():
+    client = Hindsight(base_url="http://localhost:8888")
+    tools = create_hindsight_tools(client=client, bank_id="user-123")
 
-agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o"))
-response = await agent.run("What do you remember about me?")
+    agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o"))
+    response = await agent.run("What do you remember about me?")
+    print(response)
+
+asyncio.run(main())
 ```
 
 ## Selecting Tools
@@ -192,7 +210,7 @@ Banks must be created before use and should be created once per user/entity:
 
 ```python
 # One-time setup (e.g., during user onboarding)
-client.create_bank(f"user-{user_id}", name=f"{user_name}'s Memory")
+await client.acreate_bank(f"user-{user_id}", name=f"{user_name}'s Memory")
 
 # Subsequent agent creation — bank already exists
 spec = HindsightToolSpec(client=client, bank_id=f"user-{user_id}")
