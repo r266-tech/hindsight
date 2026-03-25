@@ -44,7 +44,7 @@ MODEL_MATRIX = [
     # OpenAI Codex (uses MCP with Codex-specific models)
     ("openai-codex", "gpt-5.2-codex"),
     # Bedrock models (via LiteLLM)
-    ("bedrock", "us.amazon.nova-pro-v1:0"),
+    ("bedrock", "us.amazon.nova-2-lite-v1:0"),
     # Mock provider (for testing)
     ("mock", "mock"),
 ]

@@ -235,7 +235,7 @@ export HINDSIGHT_API_LLM_MODEL=claude-sonnet-4-5-20250929
 
 # AWS Bedrock (native support - no API key needed, uses AWS credentials)
 export HINDSIGHT_API_LLM_PROVIDER=bedrock
-export HINDSIGHT_API_LLM_MODEL=us.amazon.nova-pro-v1:0
+export HINDSIGHT_API_LLM_MODEL=us.amazon.nova-2-lite-v1:0
 export AWS_ACCESS_KEY_ID=your-access-key
 export AWS_SECRET_ACCESS_KEY=your-secret-key
 export AWS_REGION_NAME=us-east-1
