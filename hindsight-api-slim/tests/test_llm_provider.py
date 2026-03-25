@@ -44,7 +44,7 @@ MODEL_MATRIX = [
     # OpenAI Codex (uses MCP with Codex-specific models)
     ("openai-codex", "gpt-5.2-codex"),
     # Bedrock models (via LiteLLM)
-    ("bedrock", "us.amazon.nova-lite-v1:0"),
+    ("bedrock", "us.amazon.nova-pro-v1:0"),
     # Mock provider (for testing)
     ("mock", "mock"),
 ]
@@ -244,10 +244,6 @@ async def test_llm_provider_memory_operations(provider: str, model: str):
     # Skip mock provider - it's a test stub, not designed for real operations
     if provider == "mock":
         pytest.skip("Mock provider is a test stub, not designed for real operations")
-
-    # Skip Bedrock lite models - they have a 10K output token limit which is too low for fact extraction (needs 64K)
-    if provider == "bedrock" and "lite" in model.lower():
-        pytest.skip(f"Bedrock model {model} has a 10K output token limit, too low for fact extraction")
 
     should_skip, reason = should_skip_provider(provider, model)
     if should_skip:
