@@ -219,6 +219,7 @@ async def handle_document_tracking(
     is_first_batch: bool,
     retain_params: dict | None = None,
     document_tags: list[str] | None = None,
+    delta_mode: bool = False,
 ) -> None:
     """
     Handle document tracking in the database.
@@ -231,6 +232,8 @@ async def handle_document_tracking(
         is_first_batch: Whether this is the first batch (for chunked operations)
         retain_params: Optional parameters passed during retain (context, event_date, etc.)
         document_tags: Optional list of tags to associate with the document
+        delta_mode: If True, skip full document delete (delta retain handles
+            chunk-level deletes separately)
     """
     import hashlib
 
@@ -238,14 +241,17 @@ async def handle_document_tracking(
     combined_content = _sanitize_text(combined_content) or ""
     content_hash = hashlib.sha256(combined_content.encode()).hexdigest()
 
-    # Always delete old document first if it exists (cascades to units and links)
-    # Only delete on the first batch to avoid deleting data we just inserted
-    if is_first_batch:
-        await conn.fetchval(
-            f"DELETE FROM {fq_table('documents')} WHERE id = $1 AND bank_id = $2 RETURNING id", document_id, bank_id
-        )
+    if not delta_mode:
+        # Legacy full-replace mode: delete old document first (cascades to units and links)
+        # Only delete on the first batch to avoid deleting data we just inserted
+        if is_first_batch:
+            await conn.fetchval(
+                f"DELETE FROM {fq_table('documents')} WHERE id = $1 AND bank_id = $2 RETURNING id",
+                document_id,
+                bank_id,
+            )
 
-    # Insert document (or update if exists from concurrent operations)
+    # Insert document (or update if exists)
     await conn.execute(
         f"""
         INSERT INTO {fq_table("documents")} (id, bank_id, original_text, content_hash, metadata, retain_params, tags)
@@ -266,3 +272,34 @@ async def handle_document_tracking(
         json.dumps(retain_params) if retain_params else None,
         document_tags or [],
     )
+
+
+async def update_memory_units_tags(
+    conn,
+    bank_id: str,
+    document_id: str,
+    tags: list[str],
+) -> int:
+    """
+    Update tags on all memory_units belonging to a document.
+
+    Used during delta retain to propagate tag changes to unchanged facts.
+
+    Returns:
+        Number of memory units updated.
+    """
+    result = await conn.execute(
+        f"""
+        UPDATE {fq_table("memory_units")}
+        SET tags = $3, updated_at = NOW()
+        WHERE bank_id = $1 AND document_id = $2
+        """,
+        bank_id,
+        document_id,
+        tags or [],
+    )
+    # result is a status string like "UPDATE 5"
+    try:
+        return int(result.split()[-1])
+    except (ValueError, IndexError):
+        return 0
