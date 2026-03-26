@@ -11,9 +11,9 @@ This module provides metrics for:
 - Database connection pool metrics
 """
 
+import importlib
 import logging
 import os
-import importlib
 
 _resource_mod = importlib.import_module("resource") if importlib.util.find_spec("resource") else None
 import threading
