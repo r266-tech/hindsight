@@ -160,17 +160,11 @@ Restart or reload your MCP client after the OAuth flow completes. Some clients c
 
 **"Insufficient scope" errors when calling memory tools**
 
-During authorization, confirm you approved access to the memory read/write scopes. If you approved with a reduced scope, revoke the client in Hindsight Cloud → Settings → Connected Clients and re-authorize.
+During authorization, confirm you approved access to the memory read/write scopes. If you approved with a reduced scope, remove the client connection and re-authorize.
 
-## Revoking Access
+## Permissions
 
-To disconnect an MCP client:
-
-1. Go to **Hindsight Cloud → Settings → Connected Clients**
-2. Find the client you want to remove
-3. Click **Revoke**
-
-The client's access token is invalidated immediately. Other connected clients are unaffected.
+Only **Owner** or **Admin** users can authorize an MCP client connection. This matches the same permission level required to create API keys. If you attempt to authorize and see a permissions error, ask your organization Owner or Admin to complete the authorization step.
 
 ## Get Started
 
