@@ -491,10 +491,11 @@ class MemoryEngine(MemoryEngineInterface):
         # Configurable via HINDSIGHT_API_RECALL_MAX_CONCURRENT (default: 50)
         self._search_semaphore = asyncio.Semaphore(get_config().recall_max_concurrent)
 
-        # Backpressure for put operations: limit concurrent puts to prevent database contention
-        # Each put_batch holds a connection for the entire transaction, so we limit to 5
-        # concurrent puts to avoid connection pool exhaustion and reduce write contention
-        self._put_semaphore = asyncio.Semaphore(5)
+        # Backpressure for retain DB writes: limit concurrent transactions to prevent contention
+        # on entity/link tables. Acquired in the orchestrator *after* LLM extraction completes,
+        # so LLM calls run in full parallelism while only the DB-heavy phase is throttled.
+        # Configurable via HINDSIGHT_API_RETAIN_MAX_CONCURRENT (default: 4).
+        self._put_semaphore = asyncio.Semaphore(get_config().retain_max_concurrent)
 
         # initialize encoding eagerly to avoid delaying the first time
         _get_tiktoken_encoding()
@@ -2279,48 +2280,47 @@ class MemoryEngine(MemoryEngineInterface):
         Returns:
             Tuple of (unit ID lists, token usage for fact extraction)
         """
-        # Backpressure: limit concurrent retains to prevent database contention
-        async with self._put_semaphore:
-            # Use the new modular orchestrator
-            from .retain import orchestrator
+        # Use the new modular orchestrator
+        from .retain import orchestrator
 
-            pool = await self._get_pool()
+        pool = await self._get_pool()
 
-            # Resolve bank-specific config for this operation
-            resolved_config = await self._config_resolver.resolve_full_config(bank_id, request_context)
+        # Resolve bank-specific config for this operation
+        resolved_config = await self._config_resolver.resolve_full_config(bank_id, request_context)
 
-            # Force chunks mode when LLM provider is "none" (no LLM available for fact extraction)
-            if self._llm_config.provider == "none":
-                resolved_config.retain_extraction_mode = "chunks"
-                resolved_config.enable_observations = False
+        # Force chunks mode when LLM provider is "none" (no LLM available for fact extraction)
+        if self._llm_config.provider == "none":
+            resolved_config.retain_extraction_mode = "chunks"
+            resolved_config.enable_observations = False
 
-            # Apply strategy overrides: explicit strategy > bank default strategy
-            from hindsight_api.config_resolver import apply_strategy
+        # Apply strategy overrides: explicit strategy > bank default strategy
+        from hindsight_api.config_resolver import apply_strategy
 
-            effective_strategy = strategy or resolved_config.retain_default_strategy
-            if effective_strategy:
-                resolved_config = apply_strategy(resolved_config, effective_strategy)
+        effective_strategy = strategy or resolved_config.retain_default_strategy
+        if effective_strategy:
+            resolved_config = apply_strategy(resolved_config, effective_strategy)
 
-            # Create parent span for retain operation
-            with create_operation_span("retain", bank_id):
-                return await orchestrator.retain_batch(
-                    pool=pool,
-                    embeddings_model=self.embeddings,
-                    llm_config=self._retain_llm_config.with_config(resolved_config),
-                    entity_resolver=self.entity_resolver,
-                    format_date_fn=self._format_readable_date,
-                    bank_id=bank_id,
-                    contents_dicts=contents,
-                    document_id=document_id,
-                    is_first_batch=is_first_batch,
-                    fact_type_override=fact_type_override,
-                    confidence_score=confidence_score,
-                    document_tags=document_tags,
-                    config=resolved_config,
-                    operation_id=operation_id,
-                    schema=_current_schema.get(),
-                    outbox_callback=outbox_callback,
-                )
+        # Create parent span for retain operation
+        with create_operation_span("retain", bank_id):
+            return await orchestrator.retain_batch(
+                pool=pool,
+                embeddings_model=self.embeddings,
+                llm_config=self._retain_llm_config.with_config(resolved_config),
+                entity_resolver=self.entity_resolver,
+                format_date_fn=self._format_readable_date,
+                bank_id=bank_id,
+                contents_dicts=contents,
+                document_id=document_id,
+                is_first_batch=is_first_batch,
+                fact_type_override=fact_type_override,
+                confidence_score=confidence_score,
+                document_tags=document_tags,
+                config=resolved_config,
+                operation_id=operation_id,
+                schema=_current_schema.get(),
+                outbox_callback=outbox_callback,
+                db_semaphore=self._put_semaphore,
+            )
 
     def recall(
         self,

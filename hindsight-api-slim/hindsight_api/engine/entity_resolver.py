@@ -808,14 +808,19 @@ class EntityResolver:
             return await self._link_units_to_entities_batch_impl(conn, unit_entity_pairs)
 
     async def _link_units_to_entities_batch_impl(self, conn, unit_entity_pairs: list[tuple[str, str]]):
-        # Batch insert all unit-entity links
-        await conn.executemany(
+        # Sorted bulk insert to prevent deadlocks from inconsistent lock ordering
+        # across concurrent transactions on the unit_entities unique index.
+        sorted_pairs = sorted(unit_entity_pairs)
+        unit_ids = [p[0] for p in sorted_pairs]
+        entity_ids = [p[1] for p in sorted_pairs]
+        await conn.execute(
             f"""
             INSERT INTO {fq_table("unit_entities")} (unit_id, entity_id)
-            VALUES ($1, $2)
+            SELECT u, e FROM unnest($1::uuid[], $2::uuid[]) AS t(u, e)
             ON CONFLICT DO NOTHING
             """,
-            unit_entity_pairs,
+            unit_ids,
+            entity_ids,
         )
 
         # Build map of unit -> entities for co-occurrence calculation

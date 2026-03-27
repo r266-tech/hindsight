@@ -4,8 +4,10 @@ from datetime import datetime, timezone, timedelta
 
 from hindsight_api.engine.retain.link_utils import (
     _normalize_datetime,
+    _cap_links_per_unit,
     compute_temporal_links,
     compute_temporal_query_bounds,
+    MAX_TEMPORAL_LINKS_PER_UNIT,
 )
 
 
@@ -254,3 +256,49 @@ class TestComputeTemporalLinks:
 
         assert len(links) == 1
         assert links[0][3] >= 0.3
+
+
+class TestCapLinksPerUnit:
+    """Tests for the _cap_links_per_unit helper function."""
+
+    def test_empty_links(self):
+        assert _cap_links_per_unit([]) == []
+
+    def test_under_cap_unchanged(self):
+        links = [
+            ("unit_a", "unit_x", "temporal", 0.9, None),
+            ("unit_a", "unit_y", "temporal", 0.8, None),
+        ]
+        result = _cap_links_per_unit(links, max_per_unit=5)
+        assert len(result) == 2
+
+    def test_caps_to_max_per_unit(self):
+        # Create 30 links from the same unit with descending weights
+        links = [("unit_a", f"unit_{i}", "temporal", 1.0 - i * 0.01, None) for i in range(30)]
+        result = _cap_links_per_unit(links, max_per_unit=10)
+        assert len(result) == 10
+        # Should keep the highest-weight links
+        weights = [lnk[3] for lnk in result]
+        assert weights == sorted(weights, reverse=True)
+        assert weights[0] == 1.0  # Highest weight kept
+
+    def test_caps_independently_per_unit(self):
+        links_a = [("unit_a", f"target_{i}", "temporal", 0.9 - i * 0.01, None) for i in range(10)]
+        links_b = [("unit_b", f"target_{i}", "temporal", 0.8 - i * 0.01, None) for i in range(10)]
+        result = _cap_links_per_unit(links_a + links_b, max_per_unit=5)
+        # 5 from unit_a + 5 from unit_b
+        assert len(result) == 10
+        from_a = [lnk for lnk in result if lnk[0] == "unit_a"]
+        from_b = [lnk for lnk in result if lnk[0] == "unit_b"]
+        assert len(from_a) == 5
+        assert len(from_b) == 5
+
+    def test_default_max_is_temporal_constant(self):
+        links = [("unit_a", f"target_{i}", "temporal", 1.0 - i * 0.01, None) for i in range(50)]
+        result = _cap_links_per_unit(links)
+        assert len(result) == MAX_TEMPORAL_LINKS_PER_UNIT
+
+    def test_preserves_tuple_structure(self):
+        links = [("from_id", "to_id", "temporal", 0.95, "entity_id")]
+        result = _cap_links_per_unit(links, max_per_unit=5)
+        assert result[0] == ("from_id", "to_id", "temporal", 0.95, "entity_id")
