@@ -213,6 +213,14 @@ def run_migrations(
             script_location="/path/to/copied/_alembic"
         )
     """
+    # Prefer a dedicated migration URL that bypasses connection poolers (e.g.
+    # PgBouncer in transaction mode).  Session-level advisory locks don't
+    # survive a PgBouncer transaction-mode cycle, so the distributed lock is
+    # ineffective when the app URL goes through a pooler.  Set
+    # HINDSIGHT_API_MIGRATION_DATABASE_URL to the direct PostgreSQL endpoint
+    # (e.g. hindsight-pg-rw) to restore correct locking behaviour.
+    migration_url = os.getenv("HINDSIGHT_API_MIGRATION_DATABASE_URL") or database_url
+
     try:
         # Determine script location
         if script_location is None:
@@ -249,7 +257,7 @@ def run_migrations(
         #   2. After acquiring the lock, COMMIT the transaction on the advisory-lock
         #      connection itself before running migrations.  pg_advisory_lock is
         #      session-level, so the lock survives the COMMIT.
-        engine = create_engine(database_url)
+        engine = create_engine(migration_url)
         with engine.connect() as conn:
             logger.debug(f"Acquiring migration advisory lock for schema '{schema_name}' (id={lock_id})...")
             while True:
@@ -394,7 +402,7 @@ def run_migrations(
                 conn.commit()
 
                 # Run migrations while holding the lock
-                _run_migrations_internal(database_url, script_location, schema=schema)
+                _run_migrations_internal(migration_url, script_location, schema=schema)
             finally:
                 # Explicitly release the lock (also released on connection close)
                 conn.execute(text(f"SELECT pg_advisory_unlock({lock_id})"))
