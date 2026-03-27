@@ -764,38 +764,64 @@ async def compute_semantic_links_ann(
     ann_start = time_mod.time()
     links = []
 
-    exclude_uuids = [uuid_mod.UUID(uid) if isinstance(uid, str) else uid for uid in unit_ids]
+    # Build exclude list — skip if placeholder IDs (not valid UUIDs, facts not
+    # yet inserted so they can't appear in ANN results anyway).
+    exclude_uuids = []
+    try:
+        exclude_uuids = [uuid_mod.UUID(uid) if isinstance(uid, str) else uid for uid in unit_ids]
+    except ValueError:
+        pass  # Placeholder IDs like "0", "1" — no need to exclude
 
     # Create temp table for seed embeddings
     await conn.execute("CREATE TEMP TABLE IF NOT EXISTS _ann_seeds (unit_id text, emb_text text)")
     await conn.execute("TRUNCATE _ann_seeds")
 
-    records = [
-        (uid, str(list(emb) if not isinstance(emb, list) else emb)) for uid, emb in zip(unit_ids, embeddings)
-    ]
+    records = [(uid, str(list(emb) if not isinstance(emb, list) else emb)) for uid, emb in zip(unit_ids, embeddings)]
     await conn.copy_records_to_table("_ann_seeds", records=records, columns=["unit_id", "emb_text"])
 
-    rows = await conn.fetch(
-        f"""
-        SELECT s.unit_id       AS from_id,
-               n.id::text      AS to_id,
-               n.similarity
-        FROM _ann_seeds s
-        CROSS JOIN LATERAL (
-            SELECT mu.id,
-                   1 - (mu.embedding <=> s.emb_text::vector) AS similarity
-            FROM {fq_table("memory_units")} mu
-            WHERE mu.bank_id = $1
-              AND mu.embedding IS NOT NULL
-              AND mu.id != ALL($2::uuid[])
-            ORDER BY mu.embedding <=> s.emb_text::vector
-            LIMIT $3
-        ) n
-        """,
-        bank_id,
-        exclude_uuids,
-        top_k,
-    )
+    if exclude_uuids:
+        rows = await conn.fetch(
+            f"""
+            SELECT s.unit_id       AS from_id,
+                   n.id::text      AS to_id,
+                   n.similarity
+            FROM _ann_seeds s
+            CROSS JOIN LATERAL (
+                SELECT mu.id,
+                       1 - (mu.embedding <=> s.emb_text::vector) AS similarity
+                FROM {fq_table("memory_units")} mu
+                WHERE mu.bank_id = $1
+                  AND mu.embedding IS NOT NULL
+                  AND mu.id != ALL($2::uuid[])
+                ORDER BY mu.embedding <=> s.emb_text::vector
+                LIMIT $3
+            ) n
+            """,
+            bank_id,
+            exclude_uuids,
+            top_k,
+        )
+    else:
+        # Phase 1 with placeholder IDs — facts not inserted yet, nothing to exclude
+        rows = await conn.fetch(
+            f"""
+            SELECT s.unit_id       AS from_id,
+                   n.id::text      AS to_id,
+                   n.similarity
+            FROM _ann_seeds s
+            CROSS JOIN LATERAL (
+                SELECT mu.id,
+                       1 - (mu.embedding <=> s.emb_text::vector) AS similarity
+                FROM {fq_table("memory_units")} mu
+                WHERE mu.bank_id = $1
+                  AND mu.embedding IS NOT NULL
+                ORDER BY mu.embedding <=> s.emb_text::vector
+                LIMIT $2
+            ) n
+            """,
+            bank_id,
+            top_k,
+        )
 
     # Clean up temp table (no ON COMMIT DROP since we're not in a transaction)
     await conn.execute("DROP TABLE IF EXISTS _ann_seeds")

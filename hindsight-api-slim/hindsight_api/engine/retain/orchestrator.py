@@ -186,8 +186,7 @@ def _remap_phase1_results(
 
     # Remap semantic ANN links (from_id uses placeholder)
     remapped_semantic = [
-        (placeholder_to_actual.get(lnk[0], lnk[0]), lnk[1], lnk[2], lnk[3], lnk[4])
-        for lnk in semantic_ann_links
+        (placeholder_to_actual.get(lnk[0], lnk[0]), lnk[1], lnk[2], lnk[3], lnk[4]) for lnk in semantic_ann_links
     ]
 
     return remapped_entity_to_unit, remapped_unit_to_entity_ids, remapped_semantic
@@ -235,8 +234,7 @@ async def _insert_facts_and_links(
             # Remap placeholder IDs to actual unit IDs.
             step_start = time.time()
             remapped_entity_to_unit, remapped_unit_to_entity_ids, remapped_semantic = _remap_phase1_results(
-                resolved_entity_ids, entity_to_unit, unit_to_entity_ids,
-                semantic_ann_links or [], unit_ids
+                resolved_entity_ids, entity_to_unit, unit_to_entity_ids, semantic_ann_links or [], unit_ids
             )
             # Update semantic_ann_links with remapped IDs for Phase 2
             semantic_ann_links = remapped_semantic
@@ -285,7 +283,10 @@ async def _insert_facts_and_links(
         step_start = time.time()
         embeddings_for_links = [fact.embedding for fact in processed_facts]
         semantic_link_count = await link_creation.create_semantic_links_batch(
-            conn, bank_id, unit_ids, embeddings_for_links,
+            conn,
+            bank_id,
+            unit_ids,
+            embeddings_for_links,
             pre_computed_ann_links=semantic_ann_links,
         )
         log_buffer.append(f"  Semantic links: {semantic_link_count} links in {time.time() - step_start:.3f}s")
