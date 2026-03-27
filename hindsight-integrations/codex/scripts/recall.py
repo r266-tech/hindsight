@@ -19,6 +19,7 @@ Exit codes:
 
 import json
 import os
+import re
 import sys
 import time
 
@@ -38,6 +39,28 @@ from lib.daemon import get_api_url
 from lib.state import write_state
 
 LAST_RECALL_STATE = "last_recall.json"
+
+# Patterns that suggest the user wants synthesis rather than raw facts.
+# These prompts benefit from reflect's agentic loop over recall's fact list.
+_REFLECT_RE = re.compile(
+    r"\b("
+    r"what do you know"
+    r"|what('s| is) my\b"
+    r"|who am i"
+    r"|tell me about (myself|me|my)"
+    r"|summarize (my|what)"
+    r"|my (background|context|profile|history|situation)"
+    r"|remind me (about|what|who|where|when)"
+    r"|give me (a summary|an overview|context)"
+    r"|what have (i|we) (talked|discussed|said)"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _pick_mode(prompt: str) -> str:
+    """Choose 'reflect' for synthesis queries, 'recall' for everything else."""
+    return "reflect" if _REFLECT_RE.search(prompt) else "recall"
 
 
 def main():
@@ -98,7 +121,10 @@ def main():
     if len(query) > recall_max_query_chars:
         query = query[:recall_max_query_chars]
 
-    recall_mode = config.get("recallMode", "recall")
+    recall_mode = config.get("recallMode", "auto")
+    if recall_mode == "auto":
+        recall_mode = _pick_mode(prompt)
+        debug_log(config, f"Auto mode selected: {recall_mode}")
     current_time = format_current_time()
     preamble = config.get("recallPromptPreamble", "")
 

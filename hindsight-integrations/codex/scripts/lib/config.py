@@ -11,7 +11,7 @@ import sys
 DEFAULTS = {
     # Recall
     "autoRecall": True,
-    "recallMode": "recall",  # "recall" (raw facts list) or "reflect" (synthesized answer)
+    "recallMode": "auto",  # "auto" (detect from query), "recall" (raw facts), "reflect" (synthesized answer)
     "recallBudget": "mid",
     "recallMaxTokens": 1024,
     "recallTypes": ["world", "experience"],
