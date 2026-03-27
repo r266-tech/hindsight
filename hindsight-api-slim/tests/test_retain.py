@@ -2045,6 +2045,72 @@ async def test_semantic_links_within_same_batch(memory, request_context):
 
 
 @pytest.mark.asyncio
+async def test_semantic_links_phase1_ann_cross_batch(memory, request_context):
+    """
+    Test that Phase 1 ANN search creates semantic links between facts from
+    DIFFERENT retain batches.
+
+    The semantic ANN search runs in Phase 1 on a separate connection (outside
+    the write transaction) using placeholder unit IDs to avoid TimeoutErrors
+    from HNSW index contention under concurrent load. This test verifies that:
+    1. Phase 1 ANN with placeholder IDs works correctly
+    2. Placeholder IDs are remapped to real unit IDs before insertion
+    3. Cross-batch semantic links are created between similar facts
+    """
+    bank_id = f"test_semantic_phase1_{datetime.now(timezone.utc).timestamp()}"
+
+    try:
+        # First batch: store some facts about Python
+        await memory.retain_async(
+            bank_id=bank_id,
+            content="Alice is an expert Python developer who builds web applications using FastAPI.",
+            context="team skills",
+            request_context=request_context,
+        )
+
+        # Second batch: store similar facts — Phase 1 ANN should find the first batch's
+        # facts via HNSW index and create cross-batch semantic links
+        unit_ids_2 = await memory.retain_async(
+            bank_id=bank_id,
+            content="Bob specializes in Python programming and creates REST APIs with FastAPI.",
+            context="team skills",
+            request_context=request_context,
+        )
+
+        assert len(unit_ids_2) > 0
+
+        # Verify cross-batch semantic links exist
+        async with memory._pool.acquire() as conn:
+            cross_batch_links = await conn.fetch(
+                """
+                SELECT from_unit_id, to_unit_id, weight
+                FROM memory_links
+                WHERE from_unit_id::text = ANY($1)
+                  AND link_type = 'semantic'
+                  AND to_unit_id::text != ALL($1)
+                """,
+                unit_ids_2,
+            )
+
+            logger.info(f"Cross-batch semantic links from batch 2: {len(cross_batch_links)}")
+            for link in cross_batch_links:
+                logger.info(
+                    f"  {str(link['from_unit_id'])[:8]}... -> {str(link['to_unit_id'])[:8]}... "
+                    f"(weight: {link['weight']:.3f})"
+                )
+
+            # Phase 1 ANN should have found similar facts from batch 1
+            assert len(cross_batch_links) > 0, (
+                "Phase 1 ANN search should create semantic links between similar facts "
+                "from different retain batches. This tests that placeholder unit IDs are "
+                "correctly remapped to real IDs after insert_facts_batch."
+            )
+
+    finally:
+        await memory.delete_bank(bank_id, request_context=request_context)
+
+
+@pytest.mark.asyncio
 async def test_temporal_links_within_same_batch(memory, request_context):
     """
     Test that temporal links are created between facts retained in the SAME batch.
