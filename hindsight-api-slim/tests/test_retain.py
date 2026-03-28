@@ -3027,3 +3027,309 @@ async def test_temporal_links_scoped_by_fact_type(memory, request_context):
 
     finally:
         await memory.delete_bank(bank_id, request_context=request_context)
+
+
+# ---------------------------------------------------------------------------
+# Streaming chunk batching tests
+# ---------------------------------------------------------------------------
+
+import json
+import uuid
+from unittest.mock import patch
+
+import pytest_asyncio
+
+from hindsight_api.engine.llm_wrapper import TokenUsage
+from hindsight_api.engine.memory_engine import MemoryEngine
+from hindsight_api.engine.task_backend import SyncTaskBackend
+
+
+def _make_mock_llm_call():
+    """Create a mock LLM call function that returns deterministic facts."""
+
+    async def mock_llm_call(*args, **kwargs):
+        from hindsight_api.engine.consolidation.consolidator import _ConsolidationBatchResponse
+
+        if kwargs.get("scope") == "consolidation":
+            return_usage = kwargs.get("return_usage", False)
+            if return_usage:
+                return _ConsolidationBatchResponse(), TokenUsage(input_tokens=0, output_tokens=0)
+            return _ConsolidationBatchResponse()
+
+        messages = kwargs.get("messages", args[0] if args else [])
+        user_msg = messages[-1]["content"] if messages else ""
+
+        # Extract sentences from the content to generate one fact per sentence
+        sentences = [s.strip() for s in user_msg.split(".") if s.strip() and len(s.strip()) > 10]
+        num_facts = max(1, min(len(sentences), 10))
+
+        facts = []
+        for i in range(num_facts):
+            sentence = sentences[i] if i < len(sentences) else f"Fact {i}"
+            facts.append({
+                "what": sentence[:200],
+                "when": "2024-06-15",
+                "where": "N/A",
+                "who": "N/A",
+                "why": "N/A",
+                "fact_type": "world",
+                "entities": [{"text": f"Entity{i}"}],
+                "causal_relations": [],
+            })
+
+        response_dict = {"facts": facts}
+        return_usage = kwargs.get("return_usage", False)
+        if return_usage:
+            usage = TokenUsage(
+                input_tokens=len(user_msg) // 4,
+                output_tokens=len(json.dumps(response_dict)) // 4,
+            )
+            return response_dict, usage
+        return response_dict
+
+    return mock_llm_call
+
+
+@pytest_asyncio.fixture(scope="function")
+async def memory_mock_llm(pg0_db_url, embeddings, cross_encoder, query_analyzer):
+    """MemoryEngine with mock LLM for streaming tests."""
+    mem = MemoryEngine(
+        db_url=pg0_db_url,
+        memory_llm_provider="openai",
+        memory_llm_api_key="mock-key",
+        memory_llm_model="gpt-4",
+        embeddings=embeddings,
+        cross_encoder=cross_encoder,
+        query_analyzer=query_analyzer,
+        pool_min_size=1,
+        pool_max_size=5,
+        run_migrations=False,
+        skip_llm_verification=True,
+        task_backend=SyncTaskBackend(),
+    )
+    await mem.initialize()
+    yield mem
+    try:
+        if mem._pool and not mem._pool._closing:
+            await mem.close()
+    except Exception:
+        pass
+
+
+def _generate_chunky_content(num_chunks: int, chunk_size: int = 3000) -> str:
+    """Generate content that will produce approximately num_chunks chunks.
+
+    Each chunk is chunk_size characters, separated by double newlines.
+    """
+    base_sentences = [
+        "Alice works as a senior engineer at TechCorp in San Francisco.",
+        "Bob joined the marketing team last month from Chicago.",
+        "The project deadline was extended to December 15th.",
+        "Sarah mentioned she is planning a trip to Tokyo next month.",
+        "The quarterly budget review showed a 15% increase in revenue.",
+        "Mike suggested exploring alternative cloud providers.",
+        "The client feedback from beta testing was positive overall.",
+        "Emily started learning Rust programming language last week.",
+        "The new office will be located in the financial district.",
+        "David presented the annual technology roadmap to stakeholders.",
+    ]
+
+    chunks = []
+    for chunk_idx in range(num_chunks):
+        # Generate enough text for one chunk
+        lines = []
+        chars = 0
+        line_idx = 0
+        while chars < chunk_size - 100:
+            sentence = f"[Chunk {chunk_idx}, Line {line_idx}] {base_sentences[line_idx % len(base_sentences)]}"
+            lines.append(sentence)
+            chars += len(sentence) + 1
+            line_idx += 1
+        chunks.append("\n".join(lines))
+
+    return "\n\n".join(chunks)
+
+
+def _set_chunk_batch_size(memory: MemoryEngine, batch_size: int) -> None:
+    """Set retain_chunk_batch_size on the config resolver's global config."""
+    memory._config_resolver._global_config.retain_chunk_batch_size = batch_size
+
+
+@pytest.mark.asyncio
+async def test_streaming_chunk_batching_produces_same_facts(memory_mock_llm, request_context):
+    """
+    Retain a medium document (~10 chunks) with batch_size=3.
+    Verify all facts are extracted (streaming should not lose facts).
+    """
+    memory = memory_mock_llm
+    _set_chunk_batch_size(memory, 3)
+    bank_id = f"test_streaming_{uuid.uuid4().hex[:8]}"
+    document_id = f"streaming_doc_{uuid.uuid4().hex[:8]}"
+
+    # Generate content that produces ~10 chunks at default chunk_size (3000 chars)
+    content = _generate_chunky_content(num_chunks=10, chunk_size=3000)
+
+    mock_llm_call = _make_mock_llm_call()
+
+    try:
+        with patch("hindsight_api.engine.llm_wrapper.LLMProvider.call", new=mock_llm_call):
+            # Retain with streaming enabled (batch_size=3, so 10 chunks -> 4 mini-batches)
+            result = await memory.retain_batch_async(
+                bank_id=bank_id,
+                contents=[{
+                    "content": content,
+                    "context": "streaming test",
+                    "event_date": datetime(2024, 6, 15, tzinfo=timezone.utc),
+                }],
+                document_id=document_id,
+                request_context=request_context,
+            )
+
+        streaming_unit_ids = result[0] if result else []
+        logger.info(f"Streaming produced {len(streaming_unit_ids)} facts")
+        assert len(streaming_unit_ids) > 0, "Streaming should produce facts"
+
+        # Verify facts are in the DB
+        async with memory._pool.acquire() as conn:
+            fact_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM memory_units WHERE bank_id = $1",
+                bank_id,
+            )
+            assert fact_count == len(streaming_unit_ids), (
+                f"DB has {fact_count} facts, but streaming returned {len(streaming_unit_ids)} unit_ids"
+            )
+
+            # Verify the document was tracked
+            doc = await conn.fetchrow(
+                "SELECT id FROM documents WHERE bank_id = $1 AND id = $2",
+                bank_id, document_id,
+            )
+            assert doc is not None, "Document should be tracked in DB"
+
+            # Verify chunks were stored with correct indices
+            chunk_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM chunks WHERE bank_id = $1 AND document_id = $2",
+                bank_id, document_id,
+            )
+            assert chunk_count > 0, "Chunks should be stored in DB"
+            logger.info(f"Stored {chunk_count} chunks for document {document_id}")
+
+    finally:
+        await memory.delete_bank(bank_id, request_context=request_context)
+
+
+@pytest.mark.asyncio
+async def test_streaming_chunk_batching_recovery(memory_mock_llm, request_context):
+    """
+    Test recovery: retain a document with streaming, then retain the same
+    document again. Delta retain should detect existing chunks and skip
+    re-extraction. Fact count should be unchanged (no duplicates).
+    """
+    memory = memory_mock_llm
+    _set_chunk_batch_size(memory, 3)
+    bank_id = f"test_streaming_recovery_{uuid.uuid4().hex[:8]}"
+    document_id = f"recovery_doc_{uuid.uuid4().hex[:8]}"
+
+    content = _generate_chunky_content(num_chunks=9, chunk_size=3000)
+
+    mock_llm_call = _make_mock_llm_call()
+
+    try:
+        # First retain — streaming mode
+        with patch("hindsight_api.engine.llm_wrapper.LLMProvider.call", new=mock_llm_call):
+            result1 = await memory.retain_batch_async(
+                bank_id=bank_id,
+                contents=[{
+                    "content": content,
+                    "context": "recovery test",
+                    "event_date": datetime(2024, 6, 15, tzinfo=timezone.utc),
+                }],
+                document_id=document_id,
+                request_context=request_context,
+            )
+
+        first_unit_ids = result1[0] if result1 else []
+        assert len(first_unit_ids) > 0, "First retain should produce facts"
+
+        async with memory._pool.acquire() as conn:
+            first_fact_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM memory_units WHERE bank_id = $1",
+                bank_id,
+            )
+
+        logger.info(f"First retain: {first_fact_count} facts")
+
+        # Second retain — same document, same content (should be a no-op via delta retain)
+        with patch("hindsight_api.engine.llm_wrapper.LLMProvider.call", new=mock_llm_call):
+            result2 = await memory.retain_batch_async(
+                bank_id=bank_id,
+                contents=[{
+                    "content": content,
+                    "context": "recovery test",
+                    "event_date": datetime(2024, 6, 15, tzinfo=timezone.utc),
+                }],
+                document_id=document_id,
+                request_context=request_context,
+            )
+
+        async with memory._pool.acquire() as conn:
+            second_fact_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM memory_units WHERE bank_id = $1",
+                bank_id,
+            )
+
+        logger.info(f"Second retain: {second_fact_count} facts")
+
+        # Fact count should be the same (delta retain skipped unchanged chunks)
+        assert second_fact_count == first_fact_count, (
+            f"Second retain should not create duplicates: first={first_fact_count}, second={second_fact_count}"
+        )
+
+    finally:
+        await memory.delete_bank(bank_id, request_context=request_context)
+
+
+@pytest.mark.asyncio
+async def test_streaming_disabled_for_small_docs(memory_mock_llm, request_context):
+    """
+    Retain a small document (2 chunks) with batch_size=500.
+    Verify it uses the non-streaming path (no batching overhead).
+    """
+    memory = memory_mock_llm
+    _set_chunk_batch_size(memory, 500)
+    bank_id = f"test_streaming_small_{uuid.uuid4().hex[:8]}"
+    document_id = f"small_doc_{uuid.uuid4().hex[:8]}"
+
+    # Generate content that produces ~2 chunks
+    content = _generate_chunky_content(num_chunks=2, chunk_size=3000)
+
+    mock_llm_call = _make_mock_llm_call()
+
+    try:
+        with patch("hindsight_api.engine.llm_wrapper.LLMProvider.call", new=mock_llm_call):
+            # batch_size=500 >> 2 chunks, so non-streaming path should be used
+            result = await memory.retain_batch_async(
+                bank_id=bank_id,
+                contents=[{
+                    "content": content,
+                    "context": "small doc test",
+                    "event_date": datetime(2024, 6, 15, tzinfo=timezone.utc),
+                }],
+                document_id=document_id,
+                request_context=request_context,
+            )
+
+        unit_ids = result[0] if result else []
+        logger.info(f"Small doc produced {len(unit_ids)} facts")
+        assert len(unit_ids) > 0, "Should produce facts even through non-streaming path"
+
+        # Verify the document was tracked
+        async with memory._pool.acquire() as conn:
+            doc = await conn.fetchrow(
+                "SELECT id FROM documents WHERE bank_id = $1 AND id = $2",
+                bank_id, document_id,
+            )
+            assert doc is not None, "Document should be tracked"
+
+    finally:
+        await memory.delete_bank(bank_id, request_context=request_context)

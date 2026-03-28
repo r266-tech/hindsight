@@ -110,6 +110,7 @@ async def _pre_resolve_phase1(
     processed_facts: list[ProcessedFact],
     config,
     log_buffer: list[str],
+    skip_semantic_ann: bool = False,
 ) -> tuple[list[str], list[tuple], dict[str, list[str]], list[tuple]]:
     """
     Phase 1: Run expensive read-heavy operations on a separate connection
@@ -148,11 +149,14 @@ async def _pre_resolve_phase1(
         )
 
         # Semantic ANN search on the same connection (autocommit, no transaction).
-        # Pass fact_types so each seed only probes its own type's HNSW index.
-        fact_types = [fact.fact_type for fact in processed_facts]
-        semantic_ann_links = await compute_semantic_links_ann(
-            resolve_conn, bank_id, placeholder_unit_ids, embeddings, fact_types=fact_types, log_buffer=log_buffer
-        )
+        # Skipped in streaming mode — deferred to Phase 3 to avoid O(bank_size)
+        # scaling bottleneck that makes later streaming batches progressively slower.
+        semantic_ann_links = []
+        if not skip_semantic_ann:
+            fact_types = [fact.fact_type for fact in processed_facts]
+            semantic_ann_links = await compute_semantic_links_ann(
+                resolve_conn, bank_id, placeholder_unit_ids, embeddings, fact_types=fact_types, log_buffer=log_buffer
+            )
 
     return resolved_entity_ids, entity_to_unit, unit_to_entity_ids, semantic_ann_links
 
@@ -475,6 +479,46 @@ async def retain_batch(
         if delta_result is not None:
             return delta_result
 
+    # --- Streaming chunk batching: check if we should process in mini-batches ---
+    chunk_batch_size = getattr(config, "retain_chunk_batch_size", 0)
+    if chunk_batch_size > 0:
+        chunk_size = getattr(config, "retain_chunk_size", 3000)
+        all_pre_chunks = []
+        for content in contents:
+            content_chunks = fact_extraction.chunk_text(content.content, chunk_size)
+            all_pre_chunks.extend(content_chunks)
+
+        total_pre_chunks = len(all_pre_chunks)
+        if total_pre_chunks > chunk_batch_size:
+            log_buffer.append(
+                f"[streaming] {total_pre_chunks} chunks > batch_size {chunk_batch_size} — "
+                f"processing in {(total_pre_chunks + chunk_batch_size - 1) // chunk_batch_size} mini-batches"
+            )
+            return await _streaming_retain_batch(
+                pool=pool,
+                embeddings_model=embeddings_model,
+                llm_config=llm_config,
+                entity_resolver=entity_resolver,
+                format_date_fn=format_date_fn,
+                bank_id=bank_id,
+                contents_dicts=contents_dicts,
+                contents=contents,
+                config=config,
+                document_id=document_id,
+                is_first_batch=is_first_batch,
+                fact_type_override=fact_type_override,
+                document_tags=document_tags,
+                agent_name=agent_name,
+                log_buffer=log_buffer,
+                start_time=start_time,
+                all_pre_chunks=all_pre_chunks,
+                chunk_batch_size=chunk_batch_size,
+                operation_id=operation_id,
+                schema=schema,
+                outbox_callback=outbox_callback,
+                db_semaphore=db_semaphore,
+            )
+
     # --- Full retain path ---
     extracted_facts, processed_facts, chunks, usage = await _extract_and_embed(
         contents,
@@ -681,6 +725,328 @@ async def retain_batch(
     else:
         await _run_db_work()
     return result_unit_ids, usage
+
+
+# ---------------------------------------------------------------------------
+# Streaming chunk batching
+# ---------------------------------------------------------------------------
+
+
+async def _streaming_retain_batch(
+    pool,
+    embeddings_model,
+    llm_config,
+    entity_resolver,
+    format_date_fn,
+    bank_id: str,
+    contents_dicts: list[RetainContentDict],
+    contents: list[RetainContent],
+    config,
+    document_id: str | None,
+    is_first_batch: bool,
+    fact_type_override: str | None,
+    document_tags: list[str] | None,
+    agent_name: str,
+    log_buffer: list[str],
+    start_time: float,
+    all_pre_chunks: list[str],
+    chunk_batch_size: int,
+    operation_id: str | None = None,
+    schema: str | None = None,
+    outbox_callback: Callable[["asyncpg.Connection"], Awaitable[None]] | None = None,
+    db_semaphore: "asyncio.Semaphore | None" = None,
+) -> tuple[list[list[str]], TokenUsage]:
+    """
+    Process a large document in streaming mini-batches to bound memory usage.
+
+    Instead of extracting facts from ALL chunks at once (which can OOM for 17k+
+    chunk documents), this splits the pre-chunked content into batches of
+    ``chunk_batch_size`` chunks.  Each mini-batch goes through the full
+    extract -> embed -> Phase 1/2/3 pipeline and commits to the DB before the
+    next batch starts, so memory is released between batches.
+
+    All mini-batches share the same ``document_id`` so that:
+    - Delta retain can detect already-committed chunks on retry
+    - The document row tracks the full content
+    - Chunks are associated with the correct document
+    """
+    total_chunks = len(all_pre_chunks)
+    total_usage = TokenUsage()
+    all_unit_ids: list[str] = []
+
+    # Determine the effective document_id (create one if needed)
+    effective_doc_id = document_id
+    if not effective_doc_id:
+        doc_ids = {item.get("document_id") for item in contents_dicts if item.get("document_id")}
+        if len(doc_ids) == 1:
+            effective_doc_id = doc_ids.pop()
+    if not effective_doc_id:
+        effective_doc_id = str(uuid.uuid4())
+
+    # Use the first content item as the template for metadata (context, event_date, etc.)
+    template_content = contents[0] if contents else RetainContent(content="")
+
+    # Load existing chunk hashes BEFORE document tracking to detect recovery.
+    # If chunks already exist (from a prior crash mid-streaming), we must NOT
+    # delete them — use upsert_document_metadata instead of handle_document_tracking
+    # which would cascade-delete all committed chunks and facts.
+    existing_chunk_hashes: set[str] = set()
+    try:
+        async with acquire_with_retry(pool) as conn:
+            existing_rows = await chunk_storage.load_existing_chunks(conn, bank_id, effective_doc_id)
+            existing_chunk_hashes = {c.content_hash for c in existing_rows if c.content_hash}
+            if existing_chunk_hashes:
+                log_buffer.append(
+                    f"[streaming] RECOVERY: found {len(existing_chunk_hashes)} already-committed chunks — "
+                    f"will skip matching and preserve existing data"
+                )
+    except Exception:
+        pass  # If we can't load, just process all chunks
+
+    # Create/update the document row ONCE with the full combined content.
+    # On recovery (existing chunks found), use upsert to avoid cascade-deleting
+    # the committed chunks and facts from the prior partial run.
+    combined_content = "\n".join([c.get("content", "") for c in contents_dicts])
+    retain_params, merged_tags = _build_retain_params(contents_dicts, document_tags)
+    async with acquire_with_retry(pool) as conn:
+        async with conn.transaction():
+            if existing_chunk_hashes:
+                # Recovery: update document metadata without deleting existing data
+                await fact_storage.upsert_document_metadata(
+                    conn, bank_id, effective_doc_id, combined_content, retain_params, merged_tags
+                )
+                log_buffer.append(
+                    f"[streaming] Document {effective_doc_id} updated (recovery, preserving existing chunks)"
+                )
+            else:
+                # Fresh: create document row (deletes old data if any from a different content)
+                await fact_storage.handle_document_tracking(
+                    conn, bank_id, effective_doc_id, combined_content, is_first_batch, retain_params, merged_tags
+                )
+                log_buffer.append(f"[streaming] Document {effective_doc_id} tracked (full content)")
+
+    # Process in mini-batches
+    global_chunk_offset = 0
+    num_batches = (total_chunks + chunk_batch_size - 1) // chunk_batch_size
+
+    for batch_idx in range(num_batches):
+        batch_start = batch_idx * chunk_batch_size
+        batch_end = min(batch_start + chunk_batch_size, total_chunks)
+        batch_chunks_raw = all_pre_chunks[batch_start:batch_end]
+
+        # Skip chunks already committed (recovery from prior crash or partial run).
+        # Compare content_hash to detect unchanged chunks without re-extracting.
+        batch_chunks = []
+        skipped = 0
+        for chunk_text in batch_chunks_raw:
+            chunk_hash = chunk_storage.compute_chunk_hash(chunk_text)
+            if chunk_hash in existing_chunk_hashes:
+                skipped += 1
+            else:
+                batch_chunks.append(chunk_text)
+
+        if skipped > 0:
+            log_buffer.append(
+                f"[streaming] Mini-batch {batch_idx + 1}/{num_batches}: "
+                f"skipped {skipped}/{len(batch_chunks_raw)} already-committed chunks"
+            )
+
+        if not batch_chunks:
+            log_buffer.append(
+                f"[streaming] Mini-batch {batch_idx + 1}/{num_batches}: all chunks already committed, skipping"
+            )
+            global_chunk_offset += len(batch_chunks_raw)
+            continue
+
+        log_buffer.append(
+            f"[streaming] Mini-batch {batch_idx + 1}/{num_batches}: "
+            f"chunks {batch_start}-{batch_end - 1} ({len(batch_chunks)} to process, {skipped} skipped)"
+        )
+
+        # Create one RetainContent per chunk so _extract_and_embed doesn't re-chunk.
+        # Each chunk is its own content item; chunk_size is set large enough that
+        # extract_facts_from_text won't split them further.
+        batch_contents = [
+            RetainContent(
+                content=chunk_text,
+                context=template_content.context,
+                event_date=template_content.event_date,
+                metadata=template_content.metadata,
+                entities=template_content.entities,
+                tags=template_content.tags,
+                observation_scopes=template_content.observation_scopes,
+            )
+            for chunk_text in batch_chunks
+        ]
+
+        # Extract facts and generate embeddings for this batch
+        batch_extracted, batch_processed, batch_chunk_meta, batch_usage = await _extract_and_embed(
+            batch_contents,
+            llm_config,
+            agent_name,
+            config,
+            embeddings_model,
+            format_date_fn,
+            fact_type_override,
+            log_buffer,
+            pool,
+            operation_id,
+            schema,
+        )
+        total_usage = total_usage + batch_usage
+
+        if not batch_extracted:
+            log_buffer.append(f"[streaming] Mini-batch {batch_idx + 1}/{num_batches}: 0 facts extracted, skipping")
+            global_chunk_offset += len(batch_chunks)
+            continue
+
+        # Adjust chunk_index on extracted facts and chunk metadata to use global offsets
+        for fact in batch_extracted:
+            if fact.chunk_index is not None:
+                fact.chunk_index = fact.chunk_index + global_chunk_offset
+        for cm in batch_chunk_meta:
+            cm.chunk_index = cm.chunk_index + global_chunk_offset
+
+        # Run Phase 1 -> Phase 2 -> Phase 3 for this mini-batch.
+        # In streaming mode, the semantic ANN search is deferred to Phase 3
+        # (best-effort, post-transaction) to avoid the O(bank_size) scaling
+        # bottleneck that makes later batches progressively slower. Within-batch
+        # semantic links (numpy, instant) are created in Phase 2.
+        async def _run_mini_batch_db_work() -> None:
+            entity_resolver.discard_pending_stats()
+            mb_start = time.time()
+
+            # Phase 1 — Entity Resolution only (no ANN — deferred to Phase 3)
+            p1_start = time.time()
+            resolved_entity_ids, entity_to_unit, unit_to_entity_ids, _ = await _pre_resolve_phase1(
+                pool,
+                entity_resolver,
+                bank_id,
+                batch_contents,
+                batch_processed,
+                config,
+                log_buffer,
+                skip_semantic_ann=True,
+            )
+
+            logger.info(f"[streaming] Phase 1 (entity resolution): {time.time() - p1_start:.3f}s")
+
+            # Phase 2 — Write transaction (within-batch semantic links only)
+            p2_start = time.time()
+            async with acquire_with_retry(pool) as conn:
+                async with conn.transaction():
+                    # Store chunks with correct global indices
+                    step_start = time.time()
+                    chunk_id_map = {}
+                    if batch_chunk_meta:
+                        chunk_id_map = await chunk_storage.store_chunks_batch(
+                            conn, bank_id, effective_doc_id, batch_chunk_meta
+                        )
+                        log_buffer.append(
+                            f"  Store chunks: {len(batch_chunk_meta)} chunks in {time.time() - step_start:.3f}s"
+                        )
+
+                    # Map document_id and chunk_id to processed facts
+                    for fact, processed_fact in zip(batch_extracted, batch_processed):
+                        processed_fact.document_id = effective_doc_id
+                        if batch_chunk_meta and fact.chunk_index is not None:
+                            chunk_id = chunk_id_map.get(fact.chunk_index)
+                            if chunk_id:
+                                processed_fact.chunk_id = chunk_id
+
+                    # Insert facts and links (no pre-computed ANN — within-batch only)
+                    batch_result_ids, phase3_ctx = await _insert_facts_and_links(
+                        conn,
+                        entity_resolver,
+                        bank_id,
+                        batch_contents,
+                        batch_extracted,
+                        batch_processed,
+                        config,
+                        log_buffer,
+                        outbox_callback if batch_idx == num_batches - 1 else None,
+                        resolved_entity_ids=resolved_entity_ids,
+                        entity_to_unit=entity_to_unit,
+                        unit_to_entity_ids=unit_to_entity_ids,
+                        semantic_ann_links=None,  # No ANN in streaming — deferred to Phase 3
+                    )
+
+                logger.info(f"[streaming] Phase 2 (write txn): {time.time() - p2_start:.3f}s")
+
+                # Phase 3 — Best-effort: entity viz + semantic ANN to existing units.
+                # Entity viz and stats are fast — await them.
+                # Semantic ANN is fire-and-forget to avoid blocking the next mini-batch.
+                try:
+                    await entity_resolver.flush_pending_stats()
+                    await _build_and_insert_entity_links_phase3(pool, entity_resolver, bank_id, phase3_ctx, log_buffer)
+                except Exception:
+                    logger.warning(f"Phase 3 stats (mini-batch {batch_idx + 1}) failed", exc_info=True)
+
+                # Fire-and-forget: semantic ANN runs in the background while the next
+                # mini-batch starts. This prevents the O(bank_size) ANN search from
+                # blocking the streaming pipeline. If it fails, within-batch links
+                # (already committed in Phase 2) are sufficient for retrieval.
+                from .link_utils import _bulk_insert_links, compute_semantic_links_ann
+
+                unit_ids_this_batch = [u for cids in batch_result_ids for u in cids]
+                embeddings_this_batch = [f.embedding for f in batch_processed]
+                fact_types_this_batch = [f.fact_type for f in batch_processed]
+
+                async def _phase3_semantic_ann(uids, embs, ftypes, bidx):
+                    try:
+                        async with acquire_with_retry(pool) as ann_conn:
+                            ann_links = await compute_semantic_links_ann(
+                                ann_conn,
+                                bank_id,
+                                uids,
+                                embs,
+                                fact_types=ftypes,
+                                log_buffer=log_buffer,
+                            )
+                            if ann_links:
+                                await _bulk_insert_links(ann_conn, ann_links, bank_id=bank_id)
+                            logger.info(f"[streaming] Phase 3 ANN (batch {bidx + 1}): {len(ann_links)} links")
+                    except Exception:
+                        logger.warning(
+                            f"Phase 3 ANN (batch {bidx + 1}) failed — within-batch links sufficient", exc_info=True
+                        )
+
+                if unit_ids_this_batch and embeddings_this_batch:
+                    asyncio.create_task(
+                        _phase3_semantic_ann(
+                            unit_ids_this_batch, embeddings_this_batch, fact_types_this_batch, batch_idx
+                        )
+                    )
+
+            logger.info(
+                f"[streaming] Mini-batch {batch_idx + 1} total (excluding fire-and-forget): {time.time() - mb_start:.3f}s"
+            )
+
+            # Collect unit_ids from this batch
+            for content_ids in batch_result_ids:
+                all_unit_ids.extend(content_ids)
+
+        if db_semaphore is not None:
+            async with db_semaphore:
+                await _run_mini_batch_db_work()
+        else:
+            await _run_mini_batch_db_work()
+
+        global_chunk_offset += len(batch_chunks)
+
+    total_time = time.time() - start_time
+    log_buffer.append(f"{'=' * 60}")
+    log_buffer.append(
+        f"STREAMING RETAIN COMPLETE: {len(all_unit_ids)} units across {num_batches} batches in {total_time:.3f}s"
+    )
+    log_buffer.append(f"Document: {effective_doc_id}")
+    log_buffer.append(f"{'=' * 60}")
+    logger.info("\n" + "\n".join(log_buffer) + "\n")
+
+    # Map all unit_ids back to the original content items.
+    # For streaming mode with a single document, all units belong to content 0.
+    result_unit_ids = [all_unit_ids] + [[] for _ in contents[1:]]
+    return result_unit_ids, total_usage
 
 
 # ---------------------------------------------------------------------------
