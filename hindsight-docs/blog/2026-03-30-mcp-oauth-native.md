@@ -1,7 +1,7 @@
 ---
 title: "What's New in Hindsight Cloud: Native OAuth for MCP Clients"
 authors: [hindsight]
-date: 2026-03-27T12:00
+date: 2026-03-30T12:00
 tags: [hindsight-cloud, release, mcp, oauth, claude-code, cursor, windsurf]
 description: "Hindsight Cloud now supports native OAuth 2.1 for MCP clients. Connect Claude Code, Cursor, Windsurf, and ChatGPT directly with no API keys required."
 image: /img/blog/hindsight-cloud-mcp-oauth.png
