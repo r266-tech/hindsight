@@ -157,29 +157,13 @@ Here's a concrete week on a team using shared memory.
 
 **Monday morning**, Dev A starts working on a new endpoint. Before writing a line of code, their agent already knows: the codebase uses asyncpg (not SQLAlchemy), the Redis TTL issue in production, and the naming convention for DB columns. This context came from the team bank, none of it required Dev A to ask anyone.
 
-**Monday afternoon**, While debugging a session handling issue, Dev A's agent discovers something new: the JWT validation library silently ignores the `aud` claim in certain edge cases. Dev A tells their agent: *"Document this for the team, the JWT library doesn't validate audience claim when the token has multiple audiences. You need to check it manually."*
-
-The agent retains this to the team bank. It's extracted as a fact: *"The JWT validation library does not validate the audience claim for tokens with multiple audiences. Manual validation required."*
+**Monday afternoon**, while debugging a session handling issue, Dev A discovers something unexpected: the JWT validation library silently ignores the `aud` claim when tokens have multiple audiences. They mention it to their agent while working through the fix. When the session ends, Hindsight automatically processes the transcript and extracts it as a fact for the team bank: *"The JWT validation library does not validate the audience claim for tokens with multiple audiences. Manual validation required."*
 
 **Tuesday morning**, Dev B starts working on a feature that touches authentication. Their agent recalls the JWT issue automatically, before Dev B has even started writing code. No Slack message. No code review comment. No one getting paged at 2am.
 
 **Six weeks later**, a production incident surfaces: tokens with multiple audiences are being silently accepted when they shouldn't be. The on-call engineer's agent queries the team bank. The JWT audience issue is already there, documented with context and a pointer to the relevant code path. Resolution time: 12 minutes instead of 2 hours. The postmortem is short.
 
 **Three months later**, a new engineer joins. On their first day using Codex, their agent has access to everything the team has learned. Not because anyone wrote it down or gave them a walkthrough, but because it's in the bank. The onboarding conversation shifts from "let me tell you about all the gotchas" to actually building something.
-
----
-
-## Seeding the Bank on Day One
-
-The shared bank starts empty. With the hook-based plugin, agents fill it automatically: Hindsight's extraction pipeline runs at the end of every session, pulling relevant facts into the bank based on the `retainMission` you've configured. No explicit commands, no tool calls. The bank builds up in the background as your team does normal work.
-
-That said, there's no reason to wait weeks for useful context to accumulate. You can bootstrap the bank on day one by running a focused session with your existing documentation. Open your architecture docs, runbooks, or Confluence pages, and work through them with your agent. As you discuss the content, Hindsight extracts facts from the conversation automatically. One session can pre-populate weeks' worth of context.
-
-A practical approach: share a doc or paste in a section, ask your agent to explain what it means for how the codebase is structured, and let the session proceed naturally. At the end, Hindsight processes the conversation and retains what matches your `retainMission`.
-
-If you're using [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup) with the MCP integration, Claude also has access to explicit `retain` and `recall` tools it can call directly. In that mode, you can ask Claude to retain a specific fact on demand, which is useful when you want to be precise about what goes into the bank. Note that MCP OAuth is a Hindsight Cloud feature; the open-source self-hosted deployment uses the hook-based approach described above.
-
-You can also check the [Hindsight cookbook](https://github.com/vectorize-io/hindsight-cookbook) for scripts that bulk-seed a bank from files or URLs.
 
 ---
 
@@ -200,7 +184,7 @@ Use `bankIdPrefix` to namespace by team or environment:
 
 This produces bank ID `acme-backend`, isolated from any other team or project using the same server.
 
-For completely separate repositories with different standards, just use different `bankId` values per repository config (checked into the repo via a `.hindsight/` config that takes precedence over the user config).
+For completely separate repositories with different standards, use a different `bankId` per project. The simplest approach is to set the `HINDSIGHT_BANK_ID` environment variable in each project's shell environment.
 
 ---
 
