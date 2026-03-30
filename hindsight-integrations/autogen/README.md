@@ -21,6 +21,7 @@ pip install hindsight-autogen autogen-agentchat "autogen-ext[openai]"
 
 ```python
 import asyncio
+import time
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from hindsight_client import Hindsight
@@ -30,11 +31,12 @@ async def main():
     client = Hindsight(base_url="http://localhost:8888")
     await client.acreate_bank(bank_id="user-123")
 
+    model_client = OpenAIChatCompletionClient(model="gpt-4o")
     tools = create_hindsight_tools(client=client, bank_id="user-123")
 
     agent = AssistantAgent(
         name="assistant",
-        model_client=OpenAIChatCompletionClient(model="gpt-4o"),
+        model_client=model_client,
         tools=tools,
     )
 
@@ -42,9 +44,16 @@ async def main():
     result = await agent.run(task="Remember that I prefer dark mode")
     print(result.messages[-1].content)
 
+    # Wait for Hindsight to finish processing (fact extraction is async)
+    time.sleep(3)
+
     # Recall it later
     result = await agent.run(task="What are my UI preferences?")
     print(result.messages[-1].content)
+
+    # Clean up
+    await client.aclose()
+    await model_client.close()
 
 asyncio.run(main())
 ```
