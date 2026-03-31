@@ -317,8 +317,13 @@ class EntityResolver:
         entity_texts = list(set(e["text"] for e in entities_data))
 
         # Fetch candidates for all unique entity texts in a single batched query.
-        # The trigram % operator uses the GIN index; the substring conditions cover
-        # exact prefix/suffix matches that trigrams might miss at low similarity.
+        # Uses the GIN trigram index on LOWER(canonical_name) for case-insensitive
+        # similarity lookup. Previous version also had LIKE '%...' substring fallbacks,
+        # but those forced full sequential scans of the entities table and caused
+        # TimeoutErrors on banks with 10k+ entities. Lowering the similarity threshold
+        # to 0.15 (from default 0.3) catches most substring relationships while
+        # staying fully index-based.
+        await conn.execute("SET pg_trgm.similarity_threshold = 0.15")
         rows = await conn.fetch(
             f"""
             SELECT DISTINCT ON (e.id)
@@ -327,16 +332,13 @@ class EntityResolver:
             FROM unnest($2::text[]) AS q(query_text)
             JOIN {fq_table("entities")} e ON (
                 e.bank_id = $1
-                AND (
-                    e.canonical_name % q.query_text
-                    OR LOWER(e.canonical_name) LIKE '%' || LOWER(q.query_text) || '%'
-                    OR LOWER(q.query_text) LIKE '%' || LOWER(e.canonical_name) || '%'
-                )
+                AND LOWER(e.canonical_name) % LOWER(q.query_text)
             )
             """,
             bank_id,
             entity_texts,
         )
+        await conn.execute("RESET pg_trgm.similarity_threshold")
 
         # Group candidates by query_text
         all_candidates: dict[str, list] = {t: [] for t in entity_texts}
