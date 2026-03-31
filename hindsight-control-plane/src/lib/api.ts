@@ -102,6 +102,15 @@ export interface MentalModel {
   reflect_response?: any;
 }
 
+export interface BankTemplateImportResponse {
+  bank_id: string;
+  config_applied: boolean;
+  mental_models_created: string[];
+  mental_models_updated: string[];
+  operation_ids: string[];
+  dry_run: boolean;
+}
+
 export class ControlPlaneClient {
   private async fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
     try {
@@ -192,6 +201,17 @@ export class ControlPlaneClient {
     return this.fetchApi<{ bank_id: string }>("/api/banks", {
       method: "POST",
       body: JSON.stringify({ bank_id: bankId }),
+    });
+  }
+
+  /**
+   * Import a bank template manifest
+   */
+  async importBankTemplate(bankId: string, manifest: Record<string, unknown>, dryRun = false) {
+    const params = dryRun ? "?dry_run=true" : "";
+    return this.fetchApi<BankTemplateImportResponse>(`/api/banks/${bankId}/import${params}`, {
+      method: "POST",
+      body: JSON.stringify(manifest),
     });
   }
 
