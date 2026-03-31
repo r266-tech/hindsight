@@ -125,20 +125,14 @@ class TestCreateHindsightTools:
             mock_cls.return_value = _mock_client()
             tools = create_hindsight_tools(bank_id="test")
             assert len(tools) == 3
-            mock_cls.assert_called_once_with(
-                base_url="http://localhost:8888", timeout=30.0
-            )
+            mock_cls.assert_called_once_with(base_url="http://localhost:8888", timeout=30.0)
 
     def test_explicit_url_overrides_config(self):
         configure(hindsight_api_url="http://config:8888")
         with patch("hindsight_autogen._client.Hindsight") as mock_cls:
             mock_cls.return_value = _mock_client()
-            create_hindsight_tools(
-                bank_id="test", hindsight_api_url="http://explicit:9999"
-            )
-            mock_cls.assert_called_once_with(
-                base_url="http://explicit:9999", timeout=30.0
-            )
+            create_hindsight_tools(bank_id="test", hindsight_api_url="http://explicit:9999")
+            mock_cls.assert_called_once_with(base_url="http://explicit:9999", timeout=30.0)
 
 
 class TestRetainTool:
@@ -154,9 +148,7 @@ class TestRetainTool:
         )
         result = await _run(tools[0], {"content": "The user likes Python"})
         assert result == "Memory stored successfully."
-        client.aretain.assert_called_once_with(
-            bank_id="test-bank", content="The user likes Python"
-        )
+        client.aretain.assert_called_once_with(bank_id="test-bank", content="The user likes Python")
 
     @pytest.mark.asyncio
     async def test_retain_passes_tags(self):
@@ -221,9 +213,7 @@ class TestRecallTool:
     @pytest.mark.asyncio
     async def test_recall_returns_numbered_results(self):
         client = _mock_client()
-        client.arecall.return_value = _mock_recall_response(
-            ["User likes Python", "User is in NYC"]
-        )
+        client.arecall.return_value = _mock_recall_response(["User likes Python", "User is in NYC"])
         tools = create_hindsight_tools(
             bank_id="test-bank",
             client=client,
@@ -339,9 +329,7 @@ class TestReflectTool:
             include_recall=False,
         )
         result = await _run(tools[0], {"query": "What do you know about the user?"})
-        assert (
-            result == "The user is a Python developer who prefers functional patterns."
-        )
+        assert result == "The user is a Python developer who prefers functional patterns."
 
     @pytest.mark.asyncio
     async def test_reflect_empty_returns_fallback(self):

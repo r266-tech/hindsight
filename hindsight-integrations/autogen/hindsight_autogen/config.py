@@ -1,11 +1,20 @@
 """Global configuration for Hindsight-AutoGen integration."""
 
+from __future__ import annotations
+
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal
 
 DEFAULT_HINDSIGHT_API_URL = "https://api.hindsight.vectorize.io"
 HINDSIGHT_API_KEY_ENV = "HINDSIGHT_API_KEY"
+
+DEFAULT_BUDGET: Literal["low", "mid", "high"] = "mid"
+DEFAULT_MAX_TOKENS = 4096
+DEFAULT_RECALL_TAGS_MATCH: Literal["any", "all", "any_strict", "all_strict"] = "any"
+
+Budget = Literal["low", "mid", "high"]
+TagsMatch = Literal["any", "all", "any_strict", "all_strict"]
 
 
 @dataclass
@@ -20,31 +29,28 @@ class HindsightAutoGenConfig:
         tags: Default tags applied when storing memories.
         recall_tags: Default tags to filter when searching memories.
         recall_tags_match: Tag matching mode (any/all/any_strict/all_strict).
-        verbose: Enable verbose logging.
     """
 
     hindsight_api_url: str = DEFAULT_HINDSIGHT_API_URL
-    api_key: Optional[str] = None
-    budget: str = "mid"
-    max_tokens: int = 4096
-    tags: Optional[list[str]] = None
-    recall_tags: Optional[list[str]] = None
-    recall_tags_match: str = "any"
-    verbose: bool = False
+    api_key: str | None = None
+    budget: Budget = DEFAULT_BUDGET
+    max_tokens: int = DEFAULT_MAX_TOKENS
+    tags: list[str] | None = None
+    recall_tags: list[str] | None = None
+    recall_tags_match: TagsMatch = DEFAULT_RECALL_TAGS_MATCH
 
 
-_global_config: Optional[HindsightAutoGenConfig] = None
+_global_config: HindsightAutoGenConfig | None = None
 
 
 def configure(
-    hindsight_api_url: Optional[str] = None,
-    api_key: Optional[str] = None,
-    budget: str = "mid",
-    max_tokens: int = 4096,
-    tags: Optional[list[str]] = None,
-    recall_tags: Optional[list[str]] = None,
-    recall_tags_match: str = "any",
-    verbose: bool = False,
+    hindsight_api_url: str | None = None,
+    api_key: str | None = None,
+    budget: Budget = DEFAULT_BUDGET,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+    tags: list[str] | None = None,
+    recall_tags: list[str] | None = None,
+    recall_tags_match: TagsMatch = DEFAULT_RECALL_TAGS_MATCH,
 ) -> HindsightAutoGenConfig:
     """Configure Hindsight connection and default settings.
 
@@ -56,7 +62,6 @@ def configure(
         tags: Default tags for retain operations.
         recall_tags: Default tags to filter recall/search.
         recall_tags_match: Tag matching mode.
-        verbose: Enable verbose logging.
 
     Returns:
         The configured HindsightAutoGenConfig.
@@ -74,13 +79,12 @@ def configure(
         tags=tags,
         recall_tags=recall_tags,
         recall_tags_match=recall_tags_match,
-        verbose=verbose,
     )
 
     return _global_config
 
 
-def get_config() -> Optional[HindsightAutoGenConfig]:
+def get_config() -> HindsightAutoGenConfig | None:
     """Get the current global configuration."""
     return _global_config
 

@@ -48,7 +48,10 @@ async def main():
     result = await agent.run(task="Remember that I prefer dark mode")
     print(result.messages[-1].content)
 
-    # Wait for Hindsight to finish processing (fact extraction is async)
+    # Hindsight processes retained content asynchronously (fact extraction,
+    # entity resolution, embeddings). A brief pause ensures memories are
+    # searchable before the next recall. In production, this delay is only
+    # needed when retain and recall happen back-to-back in the same script.
     await asyncio.sleep(3)
 
     # Recall it later
@@ -211,7 +214,6 @@ shared_tools = create_hindsight_tools(
 | `tags` | `None` | Default tags for retain operations |
 | `recall_tags` | `None` | Default tags to filter recall |
 | `recall_tags_match` | `"any"` | Default tag matching mode |
-| `verbose` | `False` | Enable verbose logging |
 
 ## Requirements
 

@@ -5,14 +5,23 @@ instances backed by Hindsight's retain/recall/reflect APIs. These tools can
 be passed directly to ``AssistantAgent(tools=[...])``.
 """
 
+from __future__ import annotations
+
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from autogen_core.tools import FunctionTool
 from hindsight_client import Hindsight
 
 from ._client import resolve_client
-from .config import get_config
+from .config import (
+    DEFAULT_BUDGET,
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_RECALL_TAGS_MATCH,
+    Budget,
+    TagsMatch,
+    get_config,
+)
 from .errors import HindsightError
 
 logger = logging.getLogger(__name__)
@@ -21,26 +30,26 @@ logger = logging.getLogger(__name__)
 def create_hindsight_tools(
     *,
     bank_id: str,
-    client: Optional[Hindsight] = None,
-    hindsight_api_url: Optional[str] = None,
-    api_key: Optional[str] = None,
-    budget: Optional[str] = None,
-    max_tokens: Optional[int] = None,
-    tags: Optional[list[str]] = None,
-    recall_tags: Optional[list[str]] = None,
-    recall_tags_match: Optional[str] = None,
+    client: Hindsight | None = None,
+    hindsight_api_url: str | None = None,
+    api_key: str | None = None,
+    budget: Budget | None = None,
+    max_tokens: int | None = None,
+    tags: list[str] | None = None,
+    recall_tags: list[str] | None = None,
+    recall_tags_match: TagsMatch | None = None,
     # Retain options
-    retain_metadata: Optional[dict[str, str]] = None,
-    retain_document_id: Optional[str] = None,
+    retain_metadata: dict[str, str] | None = None,
+    retain_document_id: str | None = None,
     # Recall options
-    recall_types: Optional[list[str]] = None,
+    recall_types: list[str] | None = None,
     recall_include_entities: bool = False,
     # Reflect options
-    reflect_context: Optional[str] = None,
-    reflect_max_tokens: Optional[int] = None,
-    reflect_response_schema: Optional[dict[str, Any]] = None,
-    reflect_tags: Optional[list[str]] = None,
-    reflect_tags_match: Optional[str] = None,
+    reflect_context: str | None = None,
+    reflect_max_tokens: int | None = None,
+    reflect_response_schema: dict[str, Any] | None = None,
+    reflect_tags: list[str] | None = None,
+    reflect_tags_match: TagsMatch | None = None,
     include_retain: bool = True,
     include_recall: bool = True,
     include_reflect: bool = True,
@@ -83,23 +92,15 @@ def create_hindsight_tools(
 
     config = get_config()
     effective_tags = tags if tags is not None else (config.tags if config else None)
-    effective_recall_tags = (
-        recall_tags
-        if recall_tags is not None
-        else (config.recall_tags if config else None)
-    )
+    effective_recall_tags = recall_tags if recall_tags is not None else (config.recall_tags if config else None)
     effective_recall_tags_match = (
         recall_tags_match
         if recall_tags_match is not None
-        else (config.recall_tags_match if config else "any")
+        else (config.recall_tags_match if config else DEFAULT_RECALL_TAGS_MATCH)
     )
-    effective_budget = (
-        budget if budget is not None else (config.budget if config else "mid")
-    )
+    effective_budget = budget if budget is not None else (config.budget if config else DEFAULT_BUDGET)
     effective_max_tokens = (
-        max_tokens
-        if max_tokens is not None
-        else (config.max_tokens if config else 4096)
+        max_tokens if max_tokens is not None else (config.max_tokens if config else DEFAULT_MAX_TOKENS)
     )
 
     tools: list[FunctionTool] = []
@@ -125,8 +126,10 @@ def create_hindsight_tools(
                     retain_kwargs["document_id"] = retain_document_id
                 await resolved_client.aretain(**retain_kwargs)
                 return "Memory stored successfully."
+            except HindsightError:
+                raise
             except Exception as e:
-                logger.error(f"Retain failed: {e}")
+                logger.error("Retain failed: %s", e)
                 raise HindsightError(f"Retain failed: {e}") from e
 
         tools.append(
@@ -169,8 +172,10 @@ def create_hindsight_tools(
                 for i, result in enumerate(response.results, 1):
                     lines.append(f"{i}. {result.text}")
                 return "\n".join(lines)
+            except HindsightError:
+                raise
             except Exception as e:
-                logger.error(f"Recall failed: {e}")
+                logger.error("Recall failed: %s", e)
                 raise HindsightError(f"Recall failed: {e}") from e
 
         tools.append(
@@ -206,19 +211,17 @@ def create_hindsight_tools(
                 if reflect_response_schema:
                     reflect_kwargs["response_schema"] = reflect_response_schema
                 # Reflect tags: use reflect-specific or fall back to recall tags
-                effective_reflect_tags = (
-                    reflect_tags if reflect_tags is not None else effective_recall_tags
-                )
-                effective_reflect_tags_match = (
-                    reflect_tags_match or effective_recall_tags_match
-                )
+                effective_reflect_tags = reflect_tags if reflect_tags is not None else effective_recall_tags
+                effective_reflect_tags_match = reflect_tags_match or effective_recall_tags_match
                 if effective_reflect_tags:
                     reflect_kwargs["tags"] = effective_reflect_tags
                     reflect_kwargs["tags_match"] = effective_reflect_tags_match
                 response = await resolved_client.areflect(**reflect_kwargs)
                 return response.text or "No relevant memories found."
+            except HindsightError:
+                raise
             except Exception as e:
-                logger.error(f"Reflect failed: {e}")
+                logger.error("Reflect failed: %s", e)
                 raise HindsightError(f"Reflect failed: {e}") from e
 
         tools.append(

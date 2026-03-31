@@ -1,6 +1,8 @@
 """Shared Hindsight client resolution logic."""
 
-from typing import Any, Optional
+from __future__ import annotations
+
+from typing import Any
 
 from hindsight_client import Hindsight
 
@@ -9,9 +11,9 @@ from .errors import HindsightError
 
 
 def resolve_client(
-    client: Optional[Hindsight],
-    hindsight_api_url: Optional[str],
-    api_key: Optional[str],
+    client: Hindsight | None,
+    hindsight_api_url: str | None,
+    api_key: str | None,
 ) -> Hindsight:
     """Resolve a Hindsight client from explicit args or global config."""
     if client is not None:

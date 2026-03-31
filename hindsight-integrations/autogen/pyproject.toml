@@ -43,6 +43,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["hindsight_autogen"]
 
+[tool.ruff]
+line-length = 120
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
@@ -52,4 +55,5 @@ dev = [
     "autogen-agentchat>=0.4.0",
     "pytest>=9.0.2",
     "pytest-asyncio>=0.23.0",
+    "ruff>=0.4.0",
 ]
