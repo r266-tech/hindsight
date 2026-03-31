@@ -18,7 +18,6 @@ Two new features are live in [Hindsight Cloud](https://ui.hindsight.vectorize.io
 
 - **Multiple organizations** — create separate orgs for production and development, or for distinct projects, and switch between them instantly from the top nav
 - **Credit transfers** — move credits between orgs you own directly from the Billing page; no support ticket required
-- **One credit grant per user** — welcome credits are tied to your user account, not each organization, so they are only granted once regardless of how many orgs you create
 - **Owner-only transfers** — only users who own both the source and destination organization can initiate a transfer
 - **Available now** — in all Hindsight Cloud accounts
 
@@ -30,8 +29,6 @@ You can now create multiple organizations from the organization switcher in the 
 - **Distinct projects** — run completely separate Hindsight setups for different clients, codebases, or teams without any cross-contamination of memory banks or billing
 
 To create a new organization, click your org name in the top navigation bar and select **New Organization**. Switching between organizations is instant — the dashboard, memory banks, API keys, and billing page all update to reflect the selected org.
-
-**One credit grant per user.** Welcome credits are tied to your user account, not each organization. Creating additional organizations does not grant additional credits.
 
 ## Credit Transfers Between Organizations
 
