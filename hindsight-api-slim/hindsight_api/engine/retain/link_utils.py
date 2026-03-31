@@ -56,6 +56,7 @@ async def _bulk_insert_links(
     links: list[tuple],
     bank_id: str = "",
     chunk_size: int = 5000,
+    skip_exists_check: bool = False,
 ) -> None:
     """Insert links into memory_links using sorted bulk INSERT FROM unnest().
 
@@ -72,6 +73,9 @@ async def _bulk_insert_links(
         bank_id: Bank identifier stored on memory_links for fast filtering.
         chunk_size: Max rows per INSERT statement to avoid query timeouts on
                     very large tables (100M+ rows).
+        skip_exists_check: Skip WHERE EXISTS checks on memory_units. Use when
+                    all referenced unit IDs are guaranteed to exist (e.g., within
+                    the same transaction that inserted them).
     """
     if not links:
         return
@@ -86,6 +90,13 @@ async def _bulk_insert_links(
     weights = [lnk[3] for lnk in sorted_links]
     entity_ids = [lnk[4] for lnk in sorted_links]
 
+    exists_clause = ""
+    if not skip_exists_check:
+        exists_clause = (
+            f"WHERE EXISTS (SELECT 1 FROM {fq_table('memory_units')} mu WHERE mu.id = f)"
+            f"  AND EXISTS (SELECT 1 FROM {fq_table('memory_units')} mu WHERE mu.id = t)"
+        )
+
     for chunk_start in range(0, len(sorted_links), chunk_size):
         chunk_end = min(chunk_start + chunk_size, len(sorted_links))
         await conn.execute(
@@ -95,6 +106,7 @@ async def _bulk_insert_links(
             SELECT f, t, tp, w, e, $6
             FROM unnest($1::uuid[], $2::uuid[], $3::text[], $4::float8[], $5::uuid[])
                 AS t(f, t, tp, w, e)
+            {exists_clause}
             ON CONFLICT (from_unit_id, to_unit_id, link_type,
                          COALESCE(entity_id, '{_NIL_ENTITY_UUID}'::uuid))
             DO NOTHING
@@ -105,6 +117,7 @@ async def _bulk_insert_links(
             weights[chunk_start:chunk_end],
             entity_ids[chunk_start:chunk_end],
             bank_id,
+            timeout=300,
         )
 
 
@@ -536,7 +549,7 @@ async def extract_entities_batch_optimized(
     Args:
         entity_resolver: EntityResolver instance for entity resolution
         conn: Database connection
-        agent_id: bank IDentifier
+        bank_id: Bank identifier
         unit_ids: List of unit IDs
         sentences: List of fact sentences
         context: Context string
@@ -597,7 +610,7 @@ async def create_temporal_links_batch_per_fact(
 
     Args:
         conn: Database connection
-        agent_id: bank IDentifier
+        bank_id: Bank identifier
         unit_ids: List of unit IDs
         time_window_hours: Time window in hours for temporal links
         log_buffer: Optional buffer for logging
@@ -745,7 +758,7 @@ async def create_temporal_links_batch_per_fact(
 
         if links:
             insert_start = time_mod.time()
-            await _bulk_insert_links(conn, links, bank_id=bank_id)
+            await _bulk_insert_links(conn, links, bank_id=bank_id, skip_exists_check=True)
             _log(log_buffer, f"      [7.4] Insert {len(links)} temporal links: {time_mod.time() - insert_start:.3f}s")
 
         return len(links)
@@ -809,7 +822,7 @@ async def compute_semantic_links_ann(
     # Reset after to avoid polluting the connection pool for recall queries.
     await conn.execute("SET hnsw.ef_search = 60")
 
-    logger.info(f"[ANN] Starting: {len(unit_ids)} seeds, top_k={top_k}")
+    logger.debug(f"[ANN] Starting: {len(unit_ids)} seeds, top_k={top_k}")
 
     # Build per-unit fact_types (default to 'world' if not provided)
     if fact_types is None:
@@ -824,11 +837,10 @@ async def compute_semantic_links_ann(
     await conn.execute("TRUNCATE _ann_seeds")
 
     records = [
-        (uid, str(list(emb) if not isinstance(emb, list) else emb), ft)
-        for uid, emb, ft in zip(unit_ids, embeddings, fact_types)
+        (uid, emb if isinstance(emb, str) else str(emb), ft) for uid, emb, ft in zip(unit_ids, embeddings, fact_types)
     ]
     await conn.copy_records_to_table("_ann_seeds", records=records, columns=["unit_id", "emb_text", "fact_type"])
-    logger.info(f"[ANN] Temp table setup: {time_mod.time() - t_setup:.3f}s ({len(records)} seeds)")
+    logger.debug(f"[ANN] Temp table setup: {time_mod.time() - t_setup:.3f}s ({len(records)} seeds)")
 
     # Run one ANN query per fact_type so each uses the right HNSW index.
     rows = []
@@ -836,7 +848,7 @@ async def compute_semantic_links_ann(
     for fact_type in active_types:
         t_query = time_mod.time()
         seed_count = sum(1 for ft in fact_types if ft == fact_type)
-        logger.info(f"[ANN] Querying fact_type={fact_type}: {seed_count} seeds")
+        logger.debug(f"[ANN] Querying fact_type={fact_type}: {seed_count} seeds")
         ft_rows = await conn.fetch(
             f"""
             SELECT s.unit_id       AS from_id,
@@ -858,8 +870,9 @@ async def compute_semantic_links_ann(
             bank_id,
             fact_type,
             top_k,
+            timeout=300,  # ANN on large banks can take minutes
         )
-        logger.info(f"[ANN] fact_type={fact_type}: {len(ft_rows)} rows in {time_mod.time() - t_query:.3f}s")
+        logger.debug(f"[ANN] fact_type={fact_type}: {len(ft_rows)} rows in {time_mod.time() - t_query:.3f}s")
         rows.extend(ft_rows)
 
     # Clean up temp table (no ON COMMIT DROP since we're not in a transaction)
@@ -1106,7 +1119,7 @@ async def create_causal_links_batch(
 
         if links:
             insert_start = time_mod.time()
-            await _bulk_insert_links(conn, links, bank_id=bank_id)
+            await _bulk_insert_links(conn, links, bank_id=bank_id, skip_exists_check=True)
             logger.debug(f"      [10.1] Insert {len(links)} causal links: {time_mod.time() - insert_start:.3f}s")
 
         return len(links)
