@@ -439,6 +439,48 @@ async def retain_batch(
     # Convert dicts to RetainContent objects
     contents = _build_contents(contents_dicts, document_tags)
 
+    # Resolve effective document_id early so both delta and streaming paths
+    # can find existing chunks from a prior attempt. On retry, the generated
+    # document_id is recovered from operation result_metadata.
+    effective_doc_id = document_id
+    if not effective_doc_id:
+        doc_ids = {item.get("document_id") for item in contents_dicts if item.get("document_id")}
+        if len(doc_ids) == 1:
+            effective_doc_id = doc_ids.pop()
+    if not effective_doc_id and operation_id:
+        try:
+            async with acquire_with_retry(pool) as conn:
+                row = await conn.fetchrow(
+                    f"SELECT result_metadata FROM {fq_table('async_operations')} WHERE operation_id = $1",
+                    uuid.UUID(operation_id),
+                )
+                if row and row["result_metadata"]:
+                    meta = (
+                        row["result_metadata"]
+                        if isinstance(row["result_metadata"], dict)
+                        else json.loads(row["result_metadata"])
+                    )
+                    effective_doc_id = meta.get("generated_document_id")
+        except Exception:
+            pass
+    if not effective_doc_id:
+        effective_doc_id = str(uuid.uuid4())
+        # Persist so retries reuse the same document_id
+        if operation_id:
+            try:
+                async with acquire_with_retry(pool) as conn:
+                    await conn.execute(
+                        f"""
+                        UPDATE {fq_table("async_operations")}
+                        SET result_metadata = result_metadata || $1::jsonb, updated_at = now()
+                        WHERE operation_id = $2
+                        """,
+                        json.dumps({"generated_document_id": effective_doc_id}),
+                        uuid.UUID(operation_id),
+                    )
+            except Exception:
+                logger.warning("Failed to persist generated document_id", exc_info=True)
+
     # --- Delta retain: check if we can skip unchanged chunks ---
     if is_first_batch:
         delta_result = await _try_delta_retain(
@@ -451,7 +493,7 @@ async def retain_batch(
             contents_dicts,
             contents,
             config,
-            document_id,
+            effective_doc_id,
             fact_type_override,
             document_tags,
             agent_name,
@@ -490,7 +532,7 @@ async def retain_batch(
                 contents_dicts=contents_dicts,
                 contents=contents,
                 config=config,
-                document_id=document_id,
+                document_id=effective_doc_id,
                 is_first_batch=is_first_batch,
                 fact_type_override=fact_type_override,
                 document_tags=document_tags,
@@ -866,14 +908,9 @@ async def _streaming_retain_batch(
     total_usage = TokenUsage()
     all_unit_ids: list[str] = []
 
-    # Determine the effective document_id (create one if needed)
+    # document_id is already resolved by retain_batch (includes recovery from
+    # operation result_metadata on retry).
     effective_doc_id = document_id
-    if not effective_doc_id:
-        doc_ids = {item.get("document_id") for item in contents_dicts if item.get("document_id")}
-        if len(doc_ids) == 1:
-            effective_doc_id = doc_ids.pop()
-    if not effective_doc_id:
-        effective_doc_id = str(uuid.uuid4())
 
     # Use the first content item as the template for metadata (context, event_date, etc.)
     template_content = contents[0] if contents else RetainContent(content="")
