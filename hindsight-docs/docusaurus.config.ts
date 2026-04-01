@@ -228,7 +228,7 @@ const config: Config = {
           items: [
             {
               to: '/templates',
-              label: 'Bank Templates',
+              label: 'Bank Templates Hub',
               customProps: { icon: 'lu-layout-template' },
             },
             {
