@@ -506,6 +506,7 @@ function BankSelectorInner() {
             className="h-9 gap-1.5"
             onClick={() => setDocDialogOpen(true)}
             title="Add document to current bank"
+            data-add-document
           >
             <Plus className="h-4 w-4" />
             <span>Add Document</span>
