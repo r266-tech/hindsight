@@ -1,7 +1,7 @@
 ---
 title: "The Memory Upgrade Every Codex User Needs"
 authors: [benfrank241]
-date: 2026-03-28T09:00
+date: 2026-04-01T09:00
 tags: [codex, memory, hindsight, tutorial]
 image: /img/blog/adding-memory-to-codex-with-hindsight.png
 description: "Codex has no persistent memory — every session starts from scratch. The Hindsight plugin hooks in automatically: facts extracted from your conversations, recalled before every prompt."
