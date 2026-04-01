@@ -250,6 +250,20 @@
   color: #4da6ff;
 }
 
+.integrationIcons {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.integrationIcon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 4px;
+  opacity: 0.8;
+}
+
 .cardBody {
   flex: 1;
   padding: 0.85rem 1.1rem 0.75rem;

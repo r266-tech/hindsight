@@ -1,6 +1,8 @@
 import React, {useMemo, useState, useCallback} from 'react';
+import useBaseUrl from '@docusaurus/useBaseUrl';
 import Layout from '@theme/Layout';
 import templatesData from '@site/src/data/templates.json';
+import integrationsData from '@site/src/data/integrations.json';
 import templateSchema from '../../../static/bank-template-schema.json';
 import JsonSchemaViewer from '@site/src/components/JsonSchemaViewer';
 import styles from './index.module.css';
@@ -14,12 +16,31 @@ const CATEGORY_LABELS: Record<Category, string> = {
   coding: 'Coding',
 };
 
+// Build a lookup from integration ID to icon path and name
+const INTEGRATION_MAP = Object.fromEntries(
+  integrationsData.integrations.map((i) => [i.id, {icon: i.icon, name: i.name}]),
+);
+
 interface Template {
   id: string;
   name: string;
   description: string;
   category: string;
+  integrations?: string[];
   manifest: Record<string, unknown>;
+}
+
+function IntegrationIcons({ids}: {ids: string[]}) {
+  return (
+    <div className={styles.integrationIcons}>
+      {ids.map((id) => {
+        const info = INTEGRATION_MAP[id];
+        if (!info?.icon) return null;
+        const src = useBaseUrl(info.icon);
+        return <img key={id} src={src} alt={info.name} title={info.name} className={styles.integrationIcon} />;
+      })}
+    </div>
+  );
 }
 
 function TemplateCard({template, onSelect}: {template: Template; onSelect: () => void}) {
@@ -27,6 +48,9 @@ function TemplateCard({template, onSelect}: {template: Template; onSelect: () =>
     <button className={styles.card} onClick={onSelect}>
       <div className={styles.cardHeader}>
         <span className={styles.categoryBadge}>{template.category}</span>
+        {template.integrations && template.integrations.length > 0 && (
+          <IntegrationIcons ids={template.integrations} />
+        )}
       </div>
       <div className={styles.cardBody}>
         <h3 className={styles.cardTitle}>{template.name}</h3>

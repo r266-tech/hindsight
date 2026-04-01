@@ -3,8 +3,9 @@
     {
       "id": "conversation",
       "name": "Conversation",
-      "description": "For chat-based agents and assistants. Tracks user preferences, conversation patterns, and builds a profile over time. Works with LiteLLM, LangGraph, Pydantic AI, Vercel AI SDK, and Chat SDK integrations.",
+      "description": "For chat-based agents and assistants. Tracks user preferences, conversation patterns, and builds a profile over time.",
       "category": "chat",
+      "integrations": ["litellm", "langgraph", "pydantic-ai", "ai-sdk", "chat"],
       "manifest": {
         "version": "1",
         "description": "General-purpose conversation memory for chat agents and assistants",
@@ -61,8 +62,9 @@
     {
       "id": "coding-agent",
       "name": "Coding Agent",
-      "description": "For coding assistants like Claude Code and Codex. Remembers project architecture, technical decisions, coding patterns, and user preferences across sessions. High literalism for precise technical recall.",
+      "description": "For coding assistants. Remembers project architecture, technical decisions, coding patterns, and user preferences across sessions. High literalism for precise technical recall.",
       "category": "coding",
+      "integrations": ["claude-code", "codex"],
       "manifest": {
         "version": "1",
         "description": "Memory for coding agents — tracks technical decisions, project context, and developer preferences",
