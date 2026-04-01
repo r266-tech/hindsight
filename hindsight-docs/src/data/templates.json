@@ -1,88 +1,29 @@
 {
   "templates": [
     {
-      "id": "customer-support",
-      "name": "Customer Support Agent",
-      "description": "Optimized for support agents handling customer interactions. High empathy, verbose extraction, and mental models that track sentiment trends and unresolved issues.",
-      "category": "support",
+      "id": "conversation",
+      "name": "Conversation",
+      "description": "For chat-based agents and assistants. Tracks user preferences, conversation patterns, and builds a profile over time. Works with LiteLLM, LangGraph, Pydantic AI, Vercel AI SDK, and Chat SDK integrations.",
+      "category": "chat",
       "manifest": {
         "version": "1",
-        "description": "Customer support agent with empathy-focused disposition and issue tracking",
+        "description": "General-purpose conversation memory for chat agents and assistants",
         "bank": {
-          "reflect_mission": "You are helping a customer support agent remember past interactions, resolutions, and customer preferences. Prioritize actionable context that helps resolve issues faster.",
-          "retain_mission": "Extract customer issues, resolutions, sentiment, commitments made, and any customer preferences or context that would help in future interactions.",
-          "retain_extraction_mode": "verbose",
-          "disposition_skepticism": 2,
-          "disposition_literalism": 3,
-          "disposition_empathy": 5,
-          "enable_observations": true,
-          "observations_mission": "Track recurring customer pain points, resolution patterns, and shifts in customer sentiment over time."
-        },
-        "mental_models": [
-          {
-            "id": "sentiment-overview",
-            "name": "Customer Sentiment Overview",
-            "source_query": "What is the overall sentiment trend across recent customer interactions? Are customers generally satisfied, frustrated, or mixed?",
-            "tags": ["sentiment", "overview"],
-            "max_tokens": 2048,
-            "trigger": {
-              "refresh_after_consolidation": true,
-              "fact_types": ["experience", "observation"]
-            }
-          },
-          {
-            "id": "unresolved-issues",
-            "name": "Unresolved Issues Tracker",
-            "source_query": "What customer issues remain unresolved, were escalated, or are awaiting follow-up? Include any commitments or deadlines.",
-            "tags": ["issues", "tracking"],
-            "max_tokens": 2048,
-            "trigger": {
-              "refresh_after_consolidation": true
-            }
-          }
-        ],
-        "directives": [
-          {
-            "name": "Acknowledge frustration first",
-            "content": "Always acknowledge the customer's frustration before offering solutions.",
-            "priority": 10,
-            "is_active": true,
-            "tags": ["tone", "empathy"]
-          },
-          {
-            "name": "No internal ticket IDs",
-            "content": "Never share internal ticket IDs or system identifiers with customers.",
-            "priority": 5,
-            "is_active": true,
-            "tags": ["compliance", "privacy"]
-          }
-        ]
-      }
-    },
-    {
-      "id": "research-assistant",
-      "name": "Research Assistant",
-      "description": "Designed for research workflows — tracks papers, methodologies, findings, and emerging themes. Concise extraction keeps the knowledge base clean.",
-      "category": "research",
-      "manifest": {
-        "version": "1",
-        "description": "Research assistant focused on tracking papers, methods, and emerging themes",
-        "bank": {
-          "reflect_mission": "You are a research assistant helping track academic papers, experiments, methodologies, and key findings. Synthesize knowledge across sources to identify patterns and gaps.",
-          "retain_mission": "Extract key findings, methodologies, paper references, author claims, statistical results, and connections between ideas.",
+          "reflect_mission": "You are a memory assistant for a conversational AI. Help recall user preferences, past interactions, and important context. Focus on what the user cares about and how they like to interact.",
+          "retain_mission": "Extract user preferences, stated facts about themselves, requests they've made, topics they care about, and any commitments or follow-ups. Ignore small talk and filler.",
           "retain_extraction_mode": "concise",
-          "disposition_skepticism": 4,
-          "disposition_literalism": 4,
-          "disposition_empathy": 2,
+          "disposition_skepticism": 3,
+          "disposition_literalism": 3,
+          "disposition_empathy": 4,
           "enable_observations": true,
-          "observations_mission": "Identify emerging research themes, methodological trends, and connections between papers."
+          "observations_mission": "Track stable user preferences, communication style, recurring topics, and how the user's needs evolve over time."
         },
         "mental_models": [
           {
-            "id": "research-themes",
-            "name": "Emerging Research Themes",
-            "source_query": "What are the main research themes and topics that have been explored? What patterns or trends are emerging across the literature?",
-            "tags": ["themes", "overview"],
+            "id": "user-profile",
+            "name": "User Profile",
+            "source_query": "What do we know about this user? What are their preferences, background, and how do they like to interact?",
+            "tags": ["profile"],
             "max_tokens": 2048,
             "trigger": {
               "refresh_after_consolidation": true,
@@ -90,117 +31,57 @@
             }
           },
           {
-            "id": "methodology-patterns",
-            "name": "Methodology Patterns",
-            "source_query": "What research methodologies and experimental approaches have been used? Which methods produced the strongest results?",
-            "tags": ["methodology"],
+            "id": "open-threads",
+            "name": "Open Threads",
+            "source_query": "What topics, tasks, or follow-ups are still open or unresolved from past conversations?",
+            "tags": ["tracking"],
             "max_tokens": 1024,
-            "trigger": {
-              "refresh_after_consolidation": true
-            }
-          }
-        ],
-        "directives": [
-          {
-            "name": "Cite paper references",
-            "content": "Always cite paper references (authors, year, title) when mentioning findings or claims.",
-            "priority": 10,
-            "is_active": true,
-            "tags": ["citation", "accuracy"]
-          },
-          {
-            "name": "Flag contradictory claims",
-            "content": "Flag contradictory claims across papers and highlight where the evidence conflicts.",
-            "priority": 5,
-            "is_active": true,
-            "tags": ["analysis", "quality"]
-          }
-        ]
-      }
-    },
-    {
-      "id": "personal-journal",
-      "name": "Personal Journal",
-      "description": "For personal life logging and journaling. High empathy disposition with mental models that track life events and relationship dynamics.",
-      "category": "personal",
-      "manifest": {
-        "version": "1",
-        "description": "Personal journal with empathetic disposition and life event tracking",
-        "bank": {
-          "reflect_mission": "You are a thoughtful personal memory assistant. Help recall life events, personal growth, and relationships with warmth and nuance. Respect the emotional weight of experiences.",
-          "retain_mission": "Extract life events, personal reflections, relationship dynamics, goals, milestones, and emotional context.",
-          "retain_extraction_mode": "verbose",
-          "disposition_skepticism": 1,
-          "disposition_literalism": 2,
-          "disposition_empathy": 5,
-          "enable_observations": true,
-          "observations_mission": "Track personal growth patterns, relationship dynamics, recurring themes in reflections, and progress toward goals."
-        },
-        "mental_models": [
-          {
-            "id": "life-events",
-            "name": "Life Events Timeline",
-            "source_query": "What are the significant life events, milestones, and experiences? How have they shaped things over time?",
-            "tags": ["events", "timeline"],
-            "max_tokens": 2048,
             "trigger": {
               "refresh_after_consolidation": true,
               "fact_types": ["experience", "observation"]
             }
-          },
-          {
-            "id": "relationships",
-            "name": "Relationship Map",
-            "source_query": "Who are the important people mentioned and what are the key dynamics of each relationship? How have these relationships evolved?",
-            "tags": ["relationships"],
-            "max_tokens": 2048,
-            "trigger": {
-              "refresh_after_consolidation": true
-            }
           }
         ],
         "directives": [
           {
-            "name": "Treat memories as confidential",
-            "content": "Treat all memories as confidential. Never suggest sharing personal details externally.",
+            "name": "Respect stated preferences",
+            "content": "Always respect explicitly stated user preferences (e.g. communication style, format, topics to avoid). These take priority over inferred patterns.",
             "priority": 10,
-            "is_active": true,
-            "tags": ["privacy", "confidentiality"]
+            "tags": ["preferences"]
           },
           {
-            "name": "Focus on emotional context",
-            "content": "Focus on emotional context and personal significance, not just factual events.",
+            "name": "No hallucinated history",
+            "content": "Never fabricate or assume past interactions that aren't in memory. If unsure whether something was discussed before, say so.",
             "priority": 5,
-            "is_active": true,
-            "tags": ["tone", "empathy"]
+            "tags": ["accuracy"]
           }
         ]
       }
     },
     {
-      "id": "code-review-buddy",
-      "name": "Code Review Buddy",
-      "description": "Tracks architectural decisions, tech debt, code patterns, and review feedback. High literalism and skepticism for precise technical memory.",
-      "category": "development",
+      "id": "coding-agent",
+      "name": "Coding Agent",
+      "description": "For coding assistants like Claude Code and Codex. Remembers project architecture, technical decisions, coding patterns, and user preferences across sessions. High literalism for precise technical recall.",
+      "category": "coding",
       "manifest": {
         "version": "1",
-        "description": "Code review assistant focused on technical decisions and architecture patterns",
+        "description": "Memory for coding agents — tracks technical decisions, project context, and developer preferences",
         "bank": {
-          "reflect_mission": "You are a technical memory assistant for a software development team. Track architectural decisions, code review feedback, tech debt, and coding patterns. Be precise and factual.",
-          "retain_mission": "Extract architectural decisions (and their rationale), code review comments, bug root causes, tech debt items, and coding patterns or conventions.",
+          "reflect_mission": "You are a memory assistant for a coding agent. Help recall technical decisions, project architecture, coding conventions, and the developer's tool and library preferences. Be precise and factual.",
+          "retain_mission": "Extract technical decisions and their rationale, architectural choices, coding patterns and conventions, project structure facts, library/tool preferences, and recurring issues. Ignore transient debugging output and boilerplate.",
           "retain_extraction_mode": "concise",
-          "disposition_skepticism": 4,
+          "disposition_skepticism": 3,
           "disposition_literalism": 5,
           "disposition_empathy": 1,
           "enable_observations": true,
-          "observations_mission": "Track recurring code quality issues, architectural drift, and evolving team conventions."
+          "observations_mission": "Track stable project facts: tech stack, team conventions, architecture patterns, and how the codebase evolves over time."
         },
         "mental_models": [
           {
-            "id": "architecture-decisions",
-            "name": "Architecture Decision Log",
-            "source_query": "What architectural and technical decisions have been made? What were the trade-offs and rationale for each?",
-            "tags": ["architecture", "decisions"],
+            "id": "project-context",
+            "name": "Project Context",
+            "source_query": "What is the project's tech stack, architecture, and key conventions? What are the main components and how do they fit together?",
+            "tags": ["architecture"],
             "max_tokens": 2048,
             "trigger": {
               "refresh_after_consolidation": true,
@@ -208,71 +89,12 @@
             }
           },
           {
-            "id": "tech-debt-tracker",
-            "name": "Tech Debt Tracker",
-            "source_query": "What known tech debt items, code quality issues, or improvement opportunities have been identified? What is their priority and status?",
-            "tags": ["tech-debt"],
+            "id": "developer-preferences",
+            "name": "Developer Preferences",
+            "source_query": "What are the developer's preferences for tools, libraries, coding style, and workflow? How do they like code to be written and reviewed?",
+            "tags": ["preferences"],
             "max_tokens": 1024,
             "trigger": {
-              "refresh_after_consolidation": true
-            }
-          }
-        ],
-        "directives": [
-          {
-            "name": "Reference file and line number",
-            "content": "Always reference the specific file and line number when discussing code issues.",
-            "priority": 10,
-            "is_active": true,
-            "tags": ["precision", "traceability"]
-          },
-          {
-            "name": "Flag security implications",
-            "content": "Flag security implications of code changes, including potential vulnerabilities and exposure risks.",
-            "priority": 10,
-            "is_active": true,
-            "tags": ["security", "review"]
-          }
-        ]
-      }
-    },
-    {
-      "id": "meeting-notes",
-      "name": "Meeting Notes",
-      "description": "Extracts action items, decisions, and ownership from meeting transcripts. Tracks commitments and decision history across meetings.",
-      "category": "productivity",
-      "manifest": {
-        "version": "1",
-        "description": "Meeting notes processor with action item and decision tracking",
-        "bank": {
-          "reflect_mission": "You are a meeting memory assistant. Help recall decisions, action items, commitments, and discussion context from meetings. Focus on what was decided and who owns what.",
-          "retain_mission": "Extract decisions made, action items with owners and deadlines, key discussion points, commitments, and any follow-up items.",
-          "retain_extraction_mode": "verbose",
-          "disposition_skepticism": 3,
-          "disposition_literalism": 4,
-          "disposition_empathy": 3,
-          "enable_observations": true,
-          "observations_mission": "Track action item completion patterns, recurring meeting topics, and decision follow-through."
-        },
-        "mental_models": [
-          {
-            "id": "action-items",
-            "name": "Open Action Items",
-            "source_query": "What action items are currently open or pending? Who owns each item and what are the deadlines?",
-            "tags": ["actions", "tracking"],
-            "max_tokens": 2048,
-            "trigger": {
-              "refresh_after_consolidation": true,
-              "fact_types": ["experience", "observation"]
-            }
-          },
-          {
-            "id": "decision-log",
-            "name": "Decision Log",
-            "source_query": "What key decisions have been made across meetings? What was the context and rationale for each decision?",
-            "tags": ["decisions"],
-            "max_tokens": 2048,
-            "trigger": {
               "refresh_after_consolidation": true,
               "fact_types": ["world", "observation"]
             }
@@ -280,18 +102,16 @@
         ],
         "directives": [
           {
-            "name": "Attribute action items to a person",
-            "content": "Always attribute action items to a specific person. If no owner is clear, flag it as unassigned.",
+            "name": "Cite file paths",
+            "content": "When referencing code or technical decisions, always include the relevant file path. Never give vague references like 'the main file' or 'the config'.",
             "priority": 10,
-            "is_active": true,
-            "tags": ["accountability", "tracking"]
+            "tags": ["precision"]
           },
           {
-            "name": "Flag items without deadlines",
-            "content": "Flag action items and commitments that do not have an explicit deadline.",
+            "name": "Decisions need rationale",
+            "content": "When recalling a technical decision, always include the rationale (why it was chosen, what alternatives were considered). A decision without context is not useful.",
             "priority": 5,
-            "is_active": true,
-            "tags": ["tracking", "completeness"]
+            "tags": ["decisions"]
           }
         ]
       }

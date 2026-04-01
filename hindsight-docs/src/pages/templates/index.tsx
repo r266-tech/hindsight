@@ -5,16 +5,13 @@ import templateSchema from '../../../static/bank-template-schema.json';
 import JsonSchemaViewer from '@site/src/components/JsonSchemaViewer';
 import styles from './index.module.css';
 
-const CATEGORIES = ['all', 'support', 'research', 'personal', 'development', 'productivity'] as const;
+const CATEGORIES = ['all', 'chat', 'coding'] as const;
 type Category = (typeof CATEGORIES)[number];
 
 const CATEGORY_LABELS: Record<Category, string> = {
   all: 'All',
-  support: 'Support',
-  research: 'Research',
-  personal: 'Personal',
-  development: 'Development',
-  productivity: 'Productivity',
+  chat: 'Chat',
+  coding: 'Coding',
 };
 
 interface Template {
