@@ -52,6 +52,15 @@ Browse the [Template Gallery](/templates) for ready-to-use templates.
         "exclude_mental_model_ids": []
       }
     }
+  ],
+  "directives": [
+    {
+      "name": "directive-name",
+      "content": "The directive instruction text",
+      "priority": 0,
+      "is_active": true,
+      "tags": ["optional", "tags"]
+    }
   ]
 }
 ```
@@ -64,8 +73,9 @@ Browse the [Template Gallery](/templates) for ready-to-use templates.
 | `description` | No | Human-readable description of the template. |
 | `bank` | No | Bank configuration overrides. Omit to leave config unchanged. |
 | `mental_models` | No | Mental models to create or update. Omit to leave unchanged. |
+| `directives` | No | Directives to create or update. Omit to leave unchanged. |
 
-Both `bank` and `mental_models` are optional. Omit `bank` to only manage mental models, or omit `mental_models` to only apply config.
+All of `bank`, `mental_models`, and `directives` are optional. Omit any section to leave that part of the bank unchanged.
 
 ### Bank Config Fields
 
@@ -97,6 +107,16 @@ All fields in `bank` are optional. Only the fields you include will be set as pe
 | `max_tokens` | No | Max tokens for generated content (256-8192). Default: `2048` |
 | `trigger` | No | Trigger settings for auto-refresh |
 
+### Directive Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Directive name. Used as the match key on re-import. |
+| `content` | Yes | The directive instruction text. |
+| `priority` | No | Priority value (higher = more important). Default: `0` |
+| `is_active` | No | Whether the directive is active. Default: `true` |
+| `tags` | No | Tags for categorization. Default: `[]` |
+
 ## Import
 
 Import a manifest into a bank. If the bank doesn't exist, it's created automatically.
@@ -111,6 +131,7 @@ curl -X POST http://localhost:8888/v1/default/banks/my-bank/import \
 
 - **Config**: all `bank` fields are applied as per-bank config overrides
 - **Mental models**: matched by `id` — existing models are updated, new ones are created
+- **Directives**: matched by `name` — existing directives are updated, new ones are created
 - **Async**: mental model content is generated asynchronously. The response includes `operation_ids` to track progress.
 
 ### Response
@@ -121,6 +142,8 @@ curl -X POST http://localhost:8888/v1/default/banks/my-bank/import \
   "config_applied": true,
   "mental_models_created": ["sentiment-overview"],
   "mental_models_updated": ["unresolved-issues"],
+  "directives_created": ["always-acknowledge-frustration"],
+  "directives_updated": ["no-internal-ids"],
   "operation_ids": ["op-1", "op-2"],
   "dry_run": false
 }

@@ -40,6 +40,22 @@
               "refresh_after_consolidation": true
             }
           }
+        ],
+        "directives": [
+          {
+            "name": "Acknowledge frustration first",
+            "content": "Always acknowledge the customer's frustration before offering solutions.",
+            "priority": 10,
+            "is_active": true,
+            "tags": ["tone", "empathy"]
+          },
+          {
+            "name": "No internal ticket IDs",
+            "content": "Never share internal ticket IDs or system identifiers with customers.",
+            "priority": 5,
+            "is_active": true,
+            "tags": ["compliance", "privacy"]
+          }
         ]
       }
     },
@@ -82,6 +98,22 @@
             "trigger": {
               "refresh_after_consolidation": true
             }
+          }
+        ],
+        "directives": [
+          {
+            "name": "Cite paper references",
+            "content": "Always cite paper references (authors, year, title) when mentioning findings or claims.",
+            "priority": 10,
+            "is_active": true,
+            "tags": ["citation", "accuracy"]
+          },
+          {
+            "name": "Flag contradictory claims",
+            "content": "Flag contradictory claims across papers and highlight where the evidence conflicts.",
+            "priority": 5,
+            "is_active": true,
+            "tags": ["analysis", "quality"]
           }
         ]
       }
@@ -126,6 +158,22 @@
               "refresh_after_consolidation": true
             }
           }
+        ],
+        "directives": [
+          {
+            "name": "Treat memories as confidential",
+            "content": "Treat all memories as confidential. Never suggest sharing personal details externally.",
+            "priority": 10,
+            "is_active": true,
+            "tags": ["privacy", "confidentiality"]
+          },
+          {
+            "name": "Focus on emotional context",
+            "content": "Focus on emotional context and personal significance, not just factual events.",
+            "priority": 5,
+            "is_active": true,
+            "tags": ["tone", "empathy"]
+          }
         ]
       }
     },
@@ -168,6 +216,22 @@
             "trigger": {
               "refresh_after_consolidation": true
             }
+          }
+        ],
+        "directives": [
+          {
+            "name": "Reference file and line number",
+            "content": "Always reference the specific file and line number when discussing code issues.",
+            "priority": 10,
+            "is_active": true,
+            "tags": ["precision", "traceability"]
+          },
+          {
+            "name": "Flag security implications",
+            "content": "Flag security implications of code changes, including potential vulnerabilities and exposure risks.",
+            "priority": 10,
+            "is_active": true,
+            "tags": ["security", "review"]
           }
         ]
       }
@@ -212,6 +276,22 @@
               "refresh_after_consolidation": true,
               "fact_types": ["world", "observation"]
             }
+          }
+        ],
+        "directives": [
+          {
+            "name": "Attribute action items to a person",
+            "content": "Always attribute action items to a specific person. If no owner is clear, flag it as unassigned.",
+            "priority": 10,
+            "is_active": true,
+            "tags": ["accountability", "tracking"]
+          },
+          {
+            "name": "Flag items without deadlines",
+            "content": "Flag action items and commitments that do not have an explicit deadline.",
+            "priority": 5,
+            "is_active": true,
+            "tags": ["tracking", "completeness"]
           }
         ]
       }
