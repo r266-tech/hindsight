@@ -1,5 +1,5 @@
 {
-  "name": "hindsight-paperclip",
+  "name": "@vectorize-io/hindsight-paperclip",
   "version": "0.1.0",
   "description": "Persistent memory for Paperclip AI agents using Hindsight",
   "type": "module",

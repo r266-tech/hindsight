@@ -1,11 +1,11 @@
 /**
- * hindsight-paperclip
+ * @vectorize-io/hindsight-paperclip
  *
  * Persistent memory for Paperclip AI agents using Hindsight.
  *
  * @example
  * ```typescript
- * import { recall, retain, loadConfig } from 'hindsight-paperclip'
+ * import { recall, retain, loadConfig } from '@vectorize-io/hindsight-paperclip'
  *
  * const config = loadConfig()
  *

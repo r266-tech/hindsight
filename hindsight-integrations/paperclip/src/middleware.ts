@@ -35,7 +35,7 @@ export interface HindsightRequest extends Request {
  * @example
  * ```typescript
  * import express from 'express'
- * import { createMemoryMiddleware, loadConfig } from 'hindsight-paperclip'
+ * import { createMemoryMiddleware, loadConfig } from '@vectorize-io/hindsight-paperclip'
  *
  * const app = express()
  * app.use(express.json())

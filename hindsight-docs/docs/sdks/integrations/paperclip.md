@@ -6,16 +6,16 @@ sidebar_position: 11
 
 Persistent memory for [Paperclip AI](https://github.com/paperclipai/paperclip) agents using [Hindsight](https://hindsight.vectorize.io).
 
-Paperclip agents start every heartbeat cold — no memory of prior sessions, decisions, or patterns. The `hindsight-paperclip` package gives them long-term memory that persists across heartbeats and sessions.
+Paperclip agents start every heartbeat cold — no memory of prior sessions, decisions, or patterns. The `@vectorize-io/hindsight-paperclip` package gives them long-term memory that persists across heartbeats and sessions.
 
 ## Quick Start
 
 ```bash
-npm install hindsight-paperclip
+npm install @vectorize-io/hindsight-paperclip
 ```
 
 ```typescript
-import { recall, retain, loadConfig } from 'hindsight-paperclip'
+import { recall, retain, loadConfig } from '@vectorize-io/hindsight-paperclip'
 
 const config = loadConfig()  // reads HINDSIGHT_API_URL, HINDSIGHT_API_TOKEN
 
@@ -64,8 +64,8 @@ For agents running as HTTP webhook servers, use the Express middleware:
 
 ```typescript
 import express from 'express'
-import { createMemoryMiddleware, loadConfig } from 'hindsight-paperclip'
-import type { HindsightRequest } from 'hindsight-paperclip'
+import { createMemoryMiddleware, loadConfig } from '@vectorize-io/hindsight-paperclip'
+import type { HindsightRequest } from '@vectorize-io/hindsight-paperclip'
 
 const app = express()
 app.use(express.json())
@@ -91,7 +91,7 @@ The middleware reads `agentId`, `companyId`, `runId`, and `context.taskDescripti
 For agents running as scripts via Paperclip's Process adapter:
 
 ```typescript
-import { recall, retain, loadConfig } from 'hindsight-paperclip'
+import { recall, retain, loadConfig } from '@vectorize-io/hindsight-paperclip'
 
 const config = loadConfig()
 const { PAPERCLIP_AGENT_ID, PAPERCLIP_COMPANY_ID, PAPERCLIP_RUN_ID } = process.env

@@ -1,4 +1,4 @@
-# hindsight-paperclip
+# @vectorize-io/hindsight-paperclip
 
 Persistent memory for [Paperclip AI](https://github.com/paperclipai/paperclip) agents using [Hindsight](https://hindsight.vectorize.io).
 
@@ -14,7 +14,7 @@ Memory is isolated per company and agent by default (`paperclip::{companyId}::{a
 ## Installation
 
 ```bash
-npm install hindsight-paperclip
+npm install @vectorize-io/hindsight-paperclip
 ```
 
 ## Configuration
@@ -32,8 +32,8 @@ Set environment variables (or pass as options to `loadConfig()`):
 
 ```typescript
 import express from 'express'
-import { createMemoryMiddleware, loadConfig } from 'hindsight-paperclip'
-import type { HindsightRequest } from 'hindsight-paperclip'
+import { createMemoryMiddleware, loadConfig } from '@vectorize-io/hindsight-paperclip'
+import type { HindsightRequest } from '@vectorize-io/hindsight-paperclip'
 
 const app = express()
 app.use(express.json())
@@ -57,7 +57,7 @@ The middleware reads `agentId`, `companyId`, `runId`, and `context.taskDescripti
 ### Process Adapter Scripts
 
 ```typescript
-import { recall, retain, loadConfig } from 'hindsight-paperclip'
+import { recall, retain, loadConfig } from '@vectorize-io/hindsight-paperclip'
 
 const config = loadConfig()
 const { PAPERCLIP_AGENT_ID, PAPERCLIP_COMPANY_ID, PAPERCLIP_RUN_ID } = process.env
@@ -87,7 +87,7 @@ await retain({
 ### Direct Function Usage
 
 ```typescript
-import { recall, retain, loadConfig } from 'hindsight-paperclip'
+import { recall, retain, loadConfig } from '@vectorize-io/hindsight-paperclip'
 
 const config = loadConfig({
   hindsightApiUrl: 'https://api.hindsight.vectorize.io',

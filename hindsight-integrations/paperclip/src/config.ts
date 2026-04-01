@@ -1,5 +1,5 @@
 /**
- * Configuration for hindsight-paperclip.
+ * Configuration for @vectorize-io/hindsight-paperclip.
  *
  * Loaded from explicit options first, then environment variables.
  */
