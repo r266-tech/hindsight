@@ -20,7 +20,8 @@ from hindsight_api.engine.embeddings import CohereEmbeddings, LocalSTEmbeddings,
 from hindsight_api.engine.query_analyzer import DateparserQueryAnalyzer
 from hindsight_api.engine.task_backend import SyncTaskBackend
 from hindsight_api.extensions import TenantContext, TenantExtension
-from hindsight_api.migrations import ensure_embedding_dimension, run_migrations
+from hindsight_api.migrations import ensure_embedding_dimension as _ensure_embedding_dimension_raw
+from hindsight_api.migrations import run_migrations
 
 # =============================================================================
 # Shared Utilities
@@ -49,22 +50,49 @@ def get_test_schema(prefix: str, worker_id: str) -> str:
     return f"{prefix}_{worker_id}"
 
 
+def _retry_on_oid_error(fn, max_retries=3):
+    """Retry a callable up to max_retries times on transient PostgreSQL OID errors.
+
+    Parallel xdist workers performing concurrent DDL can cause 'could not open
+    relation with OID' errors when PostgreSQL's relcache is invalidated.
+    """
+    import time
+
+    for attempt in range(max_retries):
+        try:
+            return fn()
+        except Exception as e:
+            if "could not open relation" in str(e) and attempt < max_retries - 1:
+                time.sleep(1)
+                continue
+            raise
+
+
+def ensure_embedding_dimension(db_url, dimension, schema=None):
+    """Wrapper around migrations.ensure_embedding_dimension with OID error retry."""
+    _retry_on_oid_error(lambda: _ensure_embedding_dimension_raw(db_url, dimension, schema=schema))
+
+
 def create_isolated_schema(db_url: str, schema_name: str, dimension: int | None = None):
     """Create an isolated schema with migrations and optional dimension adjustment."""
-    engine = create_engine(db_url)
 
-    # Create schema (drop first if exists from previous failed run)
-    with engine.connect() as conn:
-        conn.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
-        conn.execute(text(f"CREATE SCHEMA {schema_name}"))
-        conn.commit()
+    def _create():
+        engine = create_engine(db_url)
 
-    # Run migrations in the isolated schema
-    run_migrations(db_url, schema=schema_name)
+        # Create schema (drop first if exists from previous failed run)
+        with engine.connect() as conn:
+            conn.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
+            conn.execute(text(f"CREATE SCHEMA {schema_name}"))
+            conn.commit()
 
-    # Adjust embedding dimension if specified
-    if dimension is not None:
-        ensure_embedding_dimension(db_url, dimension, schema=schema_name)
+        # Run migrations in the isolated schema
+        run_migrations(db_url, schema=schema_name)
+
+        # Adjust embedding dimension if specified
+        if dimension is not None:
+            ensure_embedding_dimension(db_url, dimension, schema=schema_name)
+
+    _retry_on_oid_error(_create)
 
 
 def drop_schema(db_url: str, schema_name: str):
@@ -243,33 +271,18 @@ class TestEmbeddingDimension:
         assert get_column_dimension(db_url, schema, table="mental_models") == 384
 
     def test_mental_models_dimension_change_empty_table(self, dimension_test_schema):
-        """When mental_models is empty, dimension can be changed.
-
-        Note: Retries up to 3 times due to transient PostgreSQL OID errors
-        from concurrent DDL in parallel test execution.
-        """
-        import time
-
+        """When mental_models is empty, dimension can be changed."""
         db_url, schema = dimension_test_schema
 
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                clear_mental_model_embeddings(db_url, schema)
+        clear_mental_model_embeddings(db_url, schema)
 
-                ensure_embedding_dimension(db_url, 768, schema=schema)
+        ensure_embedding_dimension(db_url, 768, schema=schema)
 
-                assert get_column_dimension(db_url, schema, table="mental_models") == 768
+        assert get_column_dimension(db_url, schema, table="mental_models") == 768
 
-                # Change back for other tests
-                ensure_embedding_dimension(db_url, 384, schema=schema)
-                assert get_column_dimension(db_url, schema, table="mental_models") == 384
-                break
-            except Exception as e:
-                if "could not open relation" in str(e) and attempt < max_retries - 1:
-                    time.sleep(1)
-                    continue
-                raise
+        # Change back for other tests
+        ensure_embedding_dimension(db_url, 384, schema=schema)
+        assert get_column_dimension(db_url, schema, table="mental_models") == 384
 
     def test_mental_models_dimension_change_blocked_with_data(self, dimension_test_schema):
         """When mental_models has data, dimension change should be blocked."""
