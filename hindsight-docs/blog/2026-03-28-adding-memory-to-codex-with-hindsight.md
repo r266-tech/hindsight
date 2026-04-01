@@ -8,6 +8,8 @@ description: "Codex has no persistent memory — every session starts from scrat
 hide_table_of_contents: true
 ---
 
+![The Memory Upgrade Every Codex User Needs](/img/blog/adding-memory-to-codex-with-hindsight.png)
+
 ## TL;DR
 
 <!-- truncate -->
