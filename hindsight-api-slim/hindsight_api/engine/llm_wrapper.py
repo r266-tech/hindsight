@@ -146,6 +146,7 @@ def create_llm_provider(
     reasoning_effort: str,
     groq_service_tier: str | None = None,
     openai_service_tier: str | None = None,
+    extra_body: dict[str, Any] | None = None,
     vertexai_project_id: str | None = None,
     vertexai_region: str | None = None,
     vertexai_credentials: Any = None,
@@ -162,6 +163,7 @@ def create_llm_provider(
         reasoning_effort: Reasoning effort level for supported providers.
         groq_service_tier: Groq service tier (for Groq provider) - "on_demand", "flex", or "auto".
         openai_service_tier: OpenAI service tier (for OpenAI provider) - None (default) or "flex" (50% cheaper).
+        extra_body: Extra body params merged into OpenAI-compatible API calls.
         vertexai_project_id: Vertex AI project ID (for VertexAI provider).
         vertexai_region: Vertex AI region (for VertexAI provider).
         vertexai_credentials: Vertex AI credentials object (for VertexAI provider).
@@ -270,6 +272,7 @@ def create_llm_provider(
             reasoning_effort=reasoning_effort,
             groq_service_tier=groq_service_tier,
             openai_service_tier=openai_service_tier,
+            extra_body=extra_body,
         )
 
     else:
@@ -293,6 +296,7 @@ class LLMProvider:
         groq_service_tier: str | None = None,
         openai_service_tier: str | None = None,
         gemini_safety_settings: list | None = None,
+        extra_body: dict[str, Any] | None = None,
     ):
         """
         Initialize LLM provider.
@@ -306,6 +310,7 @@ class LLMProvider:
             groq_service_tier: Groq service tier ("on_demand", "flex", "auto") - from config.
             openai_service_tier: OpenAI service tier (None or "flex") - from config.
             gemini_safety_settings: Safety settings for Gemini/VertexAI providers.
+            extra_body: Extra body params merged into OpenAI-compatible API calls.
         """
         self.provider = provider.lower()
         self.api_key = api_key
@@ -317,6 +322,8 @@ class LLMProvider:
         self.openai_service_tier = openai_service_tier
         # Gemini safety settings (instance default; can be overridden per-request via context var)
         self.gemini_safety_settings = gemini_safety_settings
+        # Extra body params for OpenAI-compatible providers (e.g. chat_template_kwargs)
+        self.extra_body = extra_body
 
         # Validate provider
         valid_providers = [
@@ -413,6 +420,7 @@ class LLMProvider:
             reasoning_effort=self.reasoning_effort,
             groq_service_tier=self.groq_service_tier,
             openai_service_tier=self.openai_service_tier,
+            extra_body=self.extra_body,
             vertexai_project_id=vertexai_project_id,
             vertexai_region=vertexai_region,
             vertexai_credentials=vertexai_credentials,
@@ -707,65 +715,40 @@ class LLMProvider:
         pass
 
     @classmethod
-    def for_memory(cls) -> "LLMProvider":
-        """Create provider for memory operations from environment variables."""
-        provider = os.getenv("HINDSIGHT_API_LLM_PROVIDER", "groq")
-        api_key = os.getenv("HINDSIGHT_API_LLM_API_KEY", "")
+    def from_env(cls) -> "LLMProvider":
+        """Create provider from environment variables using config.py constants."""
+        from ..config import (
+            DEFAULT_LLM_MODEL,
+            DEFAULT_LLM_PROVIDER,
+            ENV_LLM_API_KEY,
+            ENV_LLM_BASE_URL,
+            ENV_LLM_EXTRA_BODY,
+            ENV_LLM_MODEL,
+            ENV_LLM_PROVIDER,
+        )
 
-        # API key not needed for openai-codex (uses OAuth), claude-code (uses Keychain OAuth),
-        # ollama (local), vertexai (uses GCP service account credentials),
-        # or litellm (uses provider-specific auth, e.g. AWS credentials for Bedrock)
+        provider = os.getenv(ENV_LLM_PROVIDER, DEFAULT_LLM_PROVIDER)
+        api_key = os.getenv(ENV_LLM_API_KEY, "")
+
         if not api_key and not requires_api_key(provider):
             pass  # Provider handles its own auth
         elif not api_key:
             raise ValueError(
-                "HINDSIGHT_API_LLM_API_KEY environment variable is required (unless using openai-codex, claude-code, or litellm)"
+                f"{ENV_LLM_API_KEY} environment variable is required (unless using openai-codex, claude-code, or litellm)"
             )
 
-        base_url = os.getenv("HINDSIGHT_API_LLM_BASE_URL", "")
-        model = os.getenv("HINDSIGHT_API_LLM_MODEL", "openai/gpt-oss-120b")
+        base_url = os.getenv(ENV_LLM_BASE_URL, "")
+        model = os.getenv(ENV_LLM_MODEL, DEFAULT_LLM_MODEL)
+        extra_body = json.loads(os.getenv(ENV_LLM_EXTRA_BODY, "null"))
 
-        return cls(provider=provider, api_key=api_key, base_url=base_url, model=model, reasoning_effort="low")
-
-    @classmethod
-    def for_answer_generation(cls) -> "LLMProvider":
-        """Create provider for answer generation. Falls back to memory config if not set."""
-        provider = os.getenv("HINDSIGHT_API_ANSWER_LLM_PROVIDER", os.getenv("HINDSIGHT_API_LLM_PROVIDER", "groq"))
-        api_key = os.getenv("HINDSIGHT_API_ANSWER_LLM_API_KEY", os.getenv("HINDSIGHT_API_LLM_API_KEY", ""))
-
-        # API key not needed for providers with their own auth mechanisms
-        if not api_key and not requires_api_key(provider):
-            pass  # Provider handles its own auth
-        elif not api_key:
-            raise ValueError(
-                "HINDSIGHT_API_LLM_API_KEY or HINDSIGHT_API_ANSWER_LLM_API_KEY environment variable is required "
-                "(unless using openai-codex, claude-code, or litellm)"
-            )
-
-        base_url = os.getenv("HINDSIGHT_API_ANSWER_LLM_BASE_URL", os.getenv("HINDSIGHT_API_LLM_BASE_URL", ""))
-        model = os.getenv("HINDSIGHT_API_ANSWER_LLM_MODEL", os.getenv("HINDSIGHT_API_LLM_MODEL", "openai/gpt-oss-120b"))
-
-        return cls(provider=provider, api_key=api_key, base_url=base_url, model=model, reasoning_effort="high")
-
-    @classmethod
-    def for_judge(cls) -> "LLMProvider":
-        """Create provider for judge/evaluator operations. Falls back to memory config if not set."""
-        provider = os.getenv("HINDSIGHT_API_JUDGE_LLM_PROVIDER", os.getenv("HINDSIGHT_API_LLM_PROVIDER", "groq"))
-        api_key = os.getenv("HINDSIGHT_API_JUDGE_LLM_API_KEY", os.getenv("HINDSIGHT_API_LLM_API_KEY", ""))
-
-        # API key not needed for providers with their own auth mechanisms
-        if not api_key and not requires_api_key(provider):
-            pass  # Provider handles its own auth
-        elif not api_key:
-            raise ValueError(
-                "HINDSIGHT_API_LLM_API_KEY or HINDSIGHT_API_JUDGE_LLM_API_KEY environment variable is required "
-                "(unless using openai-codex, claude-code, or litellm)"
-            )
-
-        base_url = os.getenv("HINDSIGHT_API_JUDGE_LLM_BASE_URL", os.getenv("HINDSIGHT_API_LLM_BASE_URL", ""))
-        model = os.getenv("HINDSIGHT_API_JUDGE_LLM_MODEL", os.getenv("HINDSIGHT_API_LLM_MODEL", "openai/gpt-oss-120b"))
-
-        return cls(provider=provider, api_key=api_key, base_url=base_url, model=model, reasoning_effort="high")
+        return cls(
+            provider=provider,
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            reasoning_effort="low",
+            extra_body=extra_body,
+        )
 
 
 class ConfiguredLLMProvider:
