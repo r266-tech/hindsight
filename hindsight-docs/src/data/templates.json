@@ -117,6 +117,65 @@
           }
         ]
       }
+    },
+    {
+      "id": "personal-assistant",
+      "name": "Personal Assistant",
+      "description": "For always-on personal assistants that manage tasks, remember preferences, and maintain context across daily life. Tracks commitments, routines, and personal context.",
+      "category": "assistant",
+      "integrations": ["openclaw", "hermes", "nemoclaw"],
+      "manifest": {
+        "version": "1",
+        "description": "Memory for personal assistants — tracks preferences, tasks, routines, and personal context",
+        "bank": {
+          "reflect_mission": "You are a memory assistant for a personal AI assistant. Help recall the user's preferences, routines, ongoing tasks, and personal context. Be warm but precise — the user relies on you to remember what matters to them.",
+          "retain_mission": "Extract the user's preferences, routines, scheduled events, commitments, people they mention, and any personal context they share. Track what they ask for repeatedly and what they care about.",
+          "retain_extraction_mode": "verbose",
+          "disposition_skepticism": 2,
+          "disposition_literalism": 3,
+          "disposition_empathy": 5,
+          "enable_observations": true,
+          "observations_mission": "Track the user's stable preferences, recurring routines, important people and relationships, and how their priorities shift over time."
+        },
+        "mental_models": [
+          {
+            "id": "user-profile",
+            "name": "User Profile",
+            "source_query": "What do we know about this user? What are their preferences, routines, important people, and how do they like to be helped?",
+            "tags": ["profile"],
+            "max_tokens": 2048,
+            "trigger": {
+              "refresh_after_consolidation": true,
+              "fact_types": ["world", "observation"]
+            }
+          },
+          {
+            "id": "active-tasks",
+            "name": "Active Tasks & Commitments",
+            "source_query": "What tasks, commitments, or follow-ups is the user currently tracking? What deadlines or promises have been made?",
+            "tags": ["tasks"],
+            "max_tokens": 1024,
+            "trigger": {
+              "refresh_after_consolidation": true,
+              "fact_types": ["experience", "observation"]
+            }
+          }
+        ],
+        "directives": [
+          {
+            "name": "Proactive reminders",
+            "content": "When recalling tasks or commitments with deadlines, always flag upcoming or overdue items. The user expects you to be proactive about what matters.",
+            "priority": 10,
+            "tags": ["tasks", "proactive"]
+          },
+          {
+            "name": "Respect privacy",
+            "content": "Treat all personal information as confidential. Never suggest sharing personal details, contacts, or routines with others.",
+            "priority": 10,
+            "tags": ["privacy"]
+          }
+        ]
+      }
     }
   ]
 }

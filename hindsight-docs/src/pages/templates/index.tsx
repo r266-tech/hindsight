@@ -7,13 +7,14 @@ import templateSchema from '../../../static/bank-template-schema.json';
 import JsonSchemaViewer from '@site/src/components/JsonSchemaViewer';
 import styles from './index.module.css';
 
-const CATEGORIES = ['all', 'chat', 'coding'] as const;
+const CATEGORIES = ['all', 'chat', 'coding', 'assistant'] as const;
 type Category = (typeof CATEGORIES)[number];
 
 const CATEGORY_LABELS: Record<Category, string> = {
   all: 'All',
   chat: 'Chat',
   coding: 'Coding',
+  assistant: 'Assistant',
 };
 
 // Build a lookup from integration ID to icon path and name
