@@ -1,6 +1,6 @@
 """Drop unused metadata column from documents table
 
-Revision ID: d6e7f8a9b0c1
+Revision ID: d6e7f8a9b0c2
 Revises: c2d3e4f5g6h7, c5d6e7f8a9b0
 Create Date: 2026-03-30
 
@@ -12,7 +12,7 @@ from collections.abc import Sequence
 
 from alembic import context, op
 
-revision: str = "d6e7f8a9b0c1"
+revision: str = "d6e7f8a9b0c2"
 down_revision: str | Sequence[str] | None = ("c2d3e4f5g6h7", "c5d6e7f8a9b0")
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

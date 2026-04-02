@@ -439,48 +439,44 @@ class BenchmarkRunner:
         Reads the manifest JSON file and applies config overrides, creates
         mental models and directives — same logic as the /import API endpoint.
         """
-        import json as _json
-        from pathlib import Path as _Path
-
+        from hindsight_api.api.http import BankTemplateManifest
         from hindsight_api.models import RequestContext
 
-        manifest_data = _json.loads(_Path(manifest_path).read_text())
+        raw = json.loads(Path(manifest_path).read_text())
+        manifest = BankTemplateManifest.model_validate(raw)
 
-        # Ensure bank exists
         request_context = RequestContext()
         await self.memory.get_bank_profile(bank_id, request_context=request_context)
 
         # Apply bank config overrides
-        bank_config = manifest_data.get("bank")
-        if bank_config:
-            # Filter out None values
-            config_updates = {k: v for k, v in bank_config.items() if v is not None}
+        if manifest.bank:
+            config_updates = manifest.bank.get_config_updates()
             if config_updates:
                 await self.memory._config_resolver.update_bank_config(bank_id, config_updates, request_context)
 
         # Create directives
-        for directive in manifest_data.get("directives", []):
+        for directive in manifest.directives or []:
             await self.memory.create_directive(
                 bank_id=bank_id,
-                name=directive["name"],
-                content=directive["content"],
-                priority=directive.get("priority", 0),
-                is_active=directive.get("is_active", True),
-                tags=directive.get("tags"),
+                name=directive.name,
+                content=directive.content,
+                priority=directive.priority,
+                is_active=directive.is_active,
+                tags=directive.tags if directive.tags else None,
                 request_context=request_context,
             )
 
         # Create mental models (async content generation)
-        for mm in manifest_data.get("mental_models", []):
+        for mm in manifest.mental_models or []:
             mental_model = await self.memory.create_mental_model(
                 bank_id=bank_id,
-                name=mm["name"],
-                source_query=mm["source_query"],
+                name=mm.name,
+                source_query=mm.source_query,
                 content="Generating content...",
-                mental_model_id=mm.get("id"),
-                tags=mm.get("tags"),
-                max_tokens=mm.get("max_tokens", 2048),
-                trigger=mm.get("trigger"),
+                mental_model_id=mm.id,
+                tags=mm.tags if mm.tags else None,
+                max_tokens=mm.max_tokens,
+                trigger=mm.trigger.model_dump() if mm.trigger else None,
                 request_context=request_context,
             )
             await self.memory.submit_async_refresh_mental_model(
