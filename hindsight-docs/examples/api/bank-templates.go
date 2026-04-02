@@ -55,6 +55,17 @@ func main() {
 	fmt.Println(string(respBody))
 	// [/docs:import-template]
 
+	// [docs:import-dry-run]
+	resp, _ = http.Post(
+		apiURL+"/v1/default/banks/my-bank/import?dry_run=true",
+		"application/json",
+		bytes.NewReader(body),
+	)
+	defer resp.Body.Close()
+	dryRunBody, _ := io.ReadAll(resp.Body)
+	fmt.Println(string(dryRunBody))
+	// [/docs:import-dry-run]
+
 	// [docs:export-template]
 	resp, _ = http.Get(apiURL + "/v1/default/banks/my-bank/export")
 	defer resp.Body.Close()

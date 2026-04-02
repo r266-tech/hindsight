@@ -165,6 +165,9 @@ Validate a manifest without applying changes:
 <TabItem value="cli" label="CLI">
 <CodeSnippet code={templatesSh} section="import-dry-run" language="bash" />
 </TabItem>
+<TabItem value="go" label="Go">
+<CodeSnippet code={templatesGo} section="import-dry-run" language="go" />
+</TabItem>
 </Tabs>
 
 Returns what *would* happen (which config would be applied, which mental models would be created) without making any changes. Returns HTTP 400 with a detailed error message if the manifest is invalid.
