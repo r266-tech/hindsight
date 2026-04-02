@@ -101,6 +101,64 @@ class DaemonEmbedManager(EmbedManager):
         api_version = os.getenv("HINDSIGHT_EMBED_API_VERSION", __version__)
         return ["uvx", f"hindsight-api@{api_version}"]
 
+    @staticmethod
+    def _is_port_in_use(port: int) -> bool:
+        """Check if a port is in use using a socket connection (cross-platform)."""
+        import socket
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1)
+            return sock.connect_ex(("127.0.0.1", port)) == 0
+
+    @staticmethod
+    def _find_pid_on_port(port: int) -> int | None:
+        """Find the PID of the process listening on a port."""
+        import platform
+
+        try:
+            if platform.system() == "Windows":
+                # Use netstat on Windows
+                result = subprocess.run(
+                    ["netstat", "-ano", "-p", "TCP"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.splitlines():
+                        if f"127.0.0.1:{port}" in line and "LISTENING" in line:
+                            return int(line.strip().split()[-1])
+            else:
+                # Use lsof on macOS/Linux
+                result = subprocess.run(
+                    ["lsof", "-ti", f":{port}", "-sTCP:LISTEN"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return int(result.stdout.strip().split()[0])
+        except (subprocess.TimeoutExpired, ValueError, OSError, FileNotFoundError):
+            pass
+        return None
+
+    @staticmethod
+    def _kill_process(pid: int) -> bool:
+        """Kill a process by PID and wait for it to exit. Returns True if process is gone."""
+        import signal
+
+        try:
+            os.kill(pid, signal.SIGTERM)
+            for _ in range(50):
+                time.sleep(0.1)
+                try:
+                    os.kill(pid, 0)
+                except OSError:
+                    return True
+        except OSError:
+            return True  # Already gone
+        return False
+
     def _clear_port(self, port: int) -> bool:
         """
         Ensure the port is free before starting a daemon.
@@ -111,44 +169,30 @@ class DaemonEmbedManager(EmbedManager):
         Returns:
             True if port is free (or was freed), False if occupied by non-hindsight process.
         """
-        # Check if anything is listening on the port
-        try:
-            result = subprocess.run(
-                ["lsof", "-ti", f":{port}", "-sTCP:LISTEN"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode != 0 or not result.stdout.strip():
-                return True  # Port is free
-            pid = int(result.stdout.strip().split()[0])
-        except (subprocess.TimeoutExpired, ValueError, OSError, FileNotFoundError):
-            return True  # Can't check, assume free
+        if not self._is_port_in_use(port):
+            return True
 
-        # Port is occupied — check if it's a hindsight daemon
+        # Port is occupied — check if it's a hindsight daemon via /health
         try:
             with httpx.Client(timeout=2) as client:
                 response = client.get(f"http://127.0.0.1:{port}/health")
                 if response.status_code != 200:
-                    logger.warning(f"Port {port} is in use by another process (PID {pid})")
+                    logger.warning(f"Port {port} is in use by another process")
                     return False
         except Exception:
-            logger.warning(f"Port {port} is in use by another process (PID {pid})")
+            logger.warning(f"Port {port} is in use by another process")
             return False
 
-        # It's a hindsight daemon — stop it
+        # It's a hindsight daemon — find its PID and stop it
+        pid = self._find_pid_on_port(port)
+        if pid is None:
+            logger.warning(f"Port {port} has a hindsight daemon but could not find its PID")
+            return False
+
         logger.info(f"Stopping existing daemon on port {port} (PID {pid})")
-        try:
-            os.kill(pid, 15)  # SIGTERM
-            for _ in range(50):
-                time.sleep(0.1)
-                try:
-                    os.kill(pid, 0)  # Check if still alive
-                except OSError:
-                    logger.info(f"Old daemon (PID {pid}) stopped")
-                    return True
-        except OSError:
-            return True  # Already gone
+        if self._kill_process(pid):
+            logger.info(f"Old daemon (PID {pid}) stopped")
+            return True
 
         logger.warning(f"Old daemon (PID {pid}) did not stop in time")
         return False
