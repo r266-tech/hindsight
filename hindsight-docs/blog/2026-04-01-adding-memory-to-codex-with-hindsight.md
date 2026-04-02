@@ -144,7 +144,9 @@ Example `retainMission` for a focused memory bank:
 
 **Retention seems delayed.** `retainEveryNTurns` defaults to `10` in chunked mode — retain fires every 10 turns. In full-session mode (the default), retention fires once at session end. If you're testing, add `"retainEveryNTurns": 1` to your config.
 
-**Debug mode.** Add `"debug": true` to `~/.hindsight/codex.json` to see exactly what Hindsight is doing on each turn:
+**Nothing happening?** Check `~/.hindsight/codex/error.log` first — hook failures are written there. For a full trace of what each hook is doing, enable debug logging:
+
+**Debug mode.** Add `"debug": true` to `~/.hindsight/codex.json` to log detailed activity to `~/.hindsight/codex/debug.log`:
 
 ```
 [Hindsight] Recalling from bank 'codex', query length: 42
