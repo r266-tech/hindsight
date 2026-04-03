@@ -81,8 +81,15 @@ export function createHooks(
     state: PluginState,
     opencodeClient: OpencodeClient,
 ): HindsightHooks {
+    interface RecallOutcome {
+        /** formatted context string, or null if no results */
+        context: string | null;
+        /** true if the API call succeeded (even with 0 results) */
+        ok: boolean;
+    }
+
     /** Recall memories and format as context string */
-    async function recallForContext(query: string): Promise<string | null> {
+    async function recallForContext(query: string): Promise<RecallOutcome> {
         try {
             const response = await hindsightClient.recall(bankId, query, {
                 budget: config.recallBudget as 'low' | 'mid' | 'high',
@@ -91,19 +98,19 @@ export function createHooks(
             });
 
             const results = response.results || [];
-            if (!results.length) return null;
+            if (!results.length) return { context: null, ok: true };
 
             const formatted = formatMemories(results);
-            return (
+            const context =
                 `<hindsight_memories>\n` +
                 `${config.recallPromptPreamble}\n` +
                 `Current time: ${formatCurrentTime()} UTC\n\n` +
                 `${formatted}\n` +
-                `</hindsight_memories>`
-            );
+                `</hindsight_memories>`;
+            return { context, ok: true };
         } catch (e) {
             debugLog(config, 'Recall failed:', e);
-            return null;
+            return { context: null, ok: false };
         }
     }
 
@@ -249,7 +256,7 @@ export function createHooks(
                         lastUserMsg.content,
                         config.recallMaxQueryChars,
                     );
-                    const context = await recallForContext(truncated);
+                    const { context } = await recallForContext(truncated);
                     if (context) {
                         output.context.push(context);
                     }
@@ -276,11 +283,16 @@ export function createHooks(
 
             // Use a generic project-context query for session start
             const query = `project context and recent work`;
-            const context = await recallForContext(query);
+            const { context, ok } = await recallForContext(query);
+
+            // Consume after a successful API round-trip (even with 0 results).
+            // Only preserve retry for transient API failures (ok=false).
+            if (ok) {
+                state.recalledSessions.delete(sessionId);
+            }
+
             if (context) {
                 output.system.push(context);
-                // Only mark as consumed after successful injection
-                state.recalledSessions.delete(sessionId);
                 debugLog(config, `Injected recall context for session ${sessionId}`);
             }
         } catch (e) {

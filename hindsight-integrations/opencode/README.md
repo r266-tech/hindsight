@@ -122,7 +122,9 @@ For multi-project setups, enable dynamic bank ID derivation:
 export HINDSIGHT_DYNAMIC_BANK_ID=true
 ```
 
-The bank ID is composed from granularity fields (default: `agent::project`). For multi-user scenarios:
+The bank ID is composed from granularity fields (default: `agent::project`). Supported fields: `agent`, `project`, `channel`, `user`.
+
+**Note:** The bank ID is derived once when the plugin loads, from environment variables set before OpenCode starts. These dimensions are process-scoped — they don't change per session within a running OpenCode process. For per-user isolation, set the env vars before launching each user's OpenCode instance:
 
 ```bash
 export HINDSIGHT_CHANNEL_ID="slack-general"
