@@ -45,6 +45,8 @@ jobs:
       integrations-ag2: ${{ steps.filter.outputs.integrations-ag2 }}
       integrations-hermes: ${{ steps.filter.outputs.integrations-hermes }}
       integrations-llamaindex: ${{ steps.filter.outputs.integrations-llamaindex }}
+      integrations-opencode: ${{ steps.filter.outputs.integrations-opencode }}
+      integrations-cursor: ${{ steps.filter.outputs.integrations-cursor }}
       dev: ${{ steps.filter.outputs.dev }}
       ci: ${{ steps.filter.outputs.ci }}
       # Secrets are available for internal PRs, pull_request_review, and workflow_dispatch.
@@ -117,6 +119,10 @@ jobs:
             - 'hindsight-integrations/hermes/**'
           integrations-llamaindex:
             - 'hindsight-integrations/llamaindex/**'
+          integrations-opencode:
+            - 'hindsight-integrations/opencode/**'
+          integrations-cursor:
+            - 'hindsight-integrations/cursor/**'
           dev:
             - 'hindsight-dev/**'
           ci:
@@ -237,6 +243,32 @@ jobs:
       working-directory: ./hindsight-integrations/claude-code
       run: python -m pytest tests/ -v
 
+  test-cursor-integration:
+    needs: [detect-changes]
+    if: >-
+      github.event_name != 'pull_request_review' &&
+      (github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.integrations-cursor == 'true' ||
+      needs.detect-changes.outputs.ci == 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || '' }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+
+    - name: Install pytest
+      run: pip install pytest
+
+    - name: Run tests
+      working-directory: ./hindsight-integrations/cursor
+      run: python -m pytest tests/ -v
+
   test-codex-integration:
     needs: [detect-changes]
     if: >-
@@ -325,6 +357,37 @@ jobs:
     - name: Run tests (Deno)
       working-directory: ./hindsight-integrations/ai-sdk
       run: npm run test:deno
+
+  build-opencode-integration:
+    needs: [detect-changes]
+    if: >-
+      github.event_name != 'pull_request_review' &&
+      (github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.integrations-opencode == 'true' ||
+      needs.detect-changes.outputs.ci == 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || '' }}
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+
+    - name: Install dependencies
+      working-directory: ./hindsight-integrations/opencode
+      run: npm ci
+
+    - name: Run tests
+      working-directory: ./hindsight-integrations/opencode
+      run: npm test
+
+    - name: Build
+      working-directory: ./hindsight-integrations/opencode
+      run: npm run build
 
   build-chat-integration:
     needs: [detect-changes]
@@ -2424,9 +2487,11 @@ jobs:
       - build-typescript-client
       - build-openclaw-integration
       - test-claude-code-integration
+      - test-cursor-integration
       - test-codex-integration
       - build-ai-sdk-integration
       - test-ai-sdk-integration-deno
+      - build-opencode-integration
       - build-chat-integration
       - build-control-plane
       - build-docs
