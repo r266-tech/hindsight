@@ -150,6 +150,7 @@ PROVIDER_DEFAULTS = {
     "gemini": ("gemini", get_default_model_for_provider("gemini"), "GEMINI_API_KEY"),
     "ollama": ("ollama", get_default_model_for_provider("ollama"), None),
     "vertexai": ("vertexai", get_default_model_for_provider("vertexai"), None),
+    "custom": ("openai", "your-model-name", None),
 }
 
 
@@ -206,6 +207,14 @@ def _do_configure_from_env():
         )
         return 1
 
+    # Resolve "custom" provider: requires HINDSIGHT_API_LLM_BASE_URL, uses openai wire format
+    llm_base_url = os.environ.get("HINDSIGHT_API_LLM_BASE_URL", "")
+    if provider == "custom":
+        if not llm_base_url:
+            print("Error: HINDSIGHT_API_LLM_BASE_URL is required when using provider 'custom'.", file=sys.stderr)
+            return 1
+        provider = "openai"
+
     _, default_model, env_key = PROVIDER_DEFAULTS[provider]
 
     # Check for API key (required for non-ollama and non-vertexai providers)
@@ -226,6 +235,8 @@ def _do_configure_from_env():
     print("\033[1m\033[36m  Hindsight Embed - Non-interactive Configuration\033[0m")
     print()
     print(f"  \033[2mProvider:\033[0m {provider}")
+    if llm_base_url:
+        print(f"  \033[2mEndpoint:\033[0m {llm_base_url}")
     print(f"  \033[2mModel:\033[0m {model}")
     print(f"  \033[2mBank ID:\033[0m {bank_id}")
 
@@ -240,6 +251,8 @@ def _do_configure_from_env():
         f.write(f"HINDSIGHT_EMBED_BANK_ID={bank_id}\n")
         if api_key:
             f.write(f"HINDSIGHT_API_LLM_API_KEY={api_key}\n")
+        if llm_base_url:
+            f.write(f"HINDSIGHT_API_LLM_BASE_URL={llm_base_url}\n")
 
         # Force CPU mode for embeddings/reranker on macOS to avoid MPS/XPC crashes in daemon mode
         # On Linux, users can set these to 0 to use CUDA if available
@@ -376,6 +389,7 @@ def _do_configure_interactive(profile_name: str | None = None, port: int | None 
         ("Groq (fast & free tier)", "groq"),
         ("Google Gemini", "gemini"),
         ("Ollama (local, no API key)", "ollama"),
+        ("Custom / OpenAI-compatible endpoint (llama.cpp, vLLM, LM Studio, etc.)", "custom"),
     ]
 
     provider = _prompt_choice("Select your LLM provider:", providers, default=1)
@@ -385,6 +399,17 @@ def _do_configure_interactive(profile_name: str | None = None, port: int | None 
 
     _, default_model, env_key = PROVIDER_DEFAULTS[provider]
     print()
+
+    # Custom endpoint: prompt for base URL, then use openai-compatible wire format
+    llm_base_url = ""
+    if provider == "custom":
+        base_url = _prompt_text("Custom endpoint URL (e.g. http://192.168.1.10:8080/v1)")
+        if not base_url:
+            print("\n\033[31m✗\033[0m Endpoint URL is required.", file=sys.stderr)
+            return 1
+        llm_base_url = base_url
+        provider = "openai"
+        print()
 
     # API key
     api_key = ""
@@ -426,6 +451,8 @@ def _do_configure_interactive(profile_name: str | None = None, port: int | None 
     }
     if api_key:
         config_dict["HINDSIGHT_API_LLM_API_KEY"] = api_key
+    if llm_base_url:
+        config_dict["HINDSIGHT_API_LLM_BASE_URL"] = llm_base_url
 
     # Force CPU mode for embeddings/reranker on macOS to avoid MPS/XPC crashes in daemon mode
     import platform
@@ -468,6 +495,8 @@ def _do_configure_interactive(profile_name: str | None = None, port: int | None 
         "llm_model": model,
         "bank_id": bank_id,
     }
+    if llm_base_url:
+        new_config["llm_base_url"] = llm_base_url
     if daemon_client.ensure_daemon_running(new_config, daemon_profile):
         print("  \033[32m✓ Daemon started\033[0m")
     else:
