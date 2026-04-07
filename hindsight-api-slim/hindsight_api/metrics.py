@@ -252,7 +252,9 @@ class MetricsCollector(MetricsCollectorBase):
 
     def __init__(self):
         self.meter = get_meter()
-        self._include_bank_id = os.getenv("HINDSIGHT_API_METRICS_INCLUDE_BANK_ID", "false").lower() == "true"
+        from .config import get_config
+
+        self._include_bank_id = get_config().metrics_include_bank_id
 
         # Operation latency histogram (in seconds)
         # Records duration of retain, recall, reflect operations

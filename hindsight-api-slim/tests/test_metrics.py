@@ -76,7 +76,10 @@ class TestMetricsCollector:
     @pytest.fixture
     def collector(self, mock_meter):
         """Create a MetricsCollector with a mock meter."""
-        with patch("hindsight_api.metrics.get_meter", return_value=mock_meter):
+        mock_config = MagicMock()
+        mock_config.metrics_include_bank_id = False
+        with patch("hindsight_api.metrics.get_meter", return_value=mock_meter), \
+             patch("hindsight_api.config.get_config", return_value=mock_config):
             return MetricsCollector()
 
     def test_record_operation_records_duration(self, collector):
@@ -166,10 +169,12 @@ class TestMetricsCollector:
         assert reflect_attrs["operation"] == "reflect"
         assert reflect_attrs["source"] == "api"
 
-    def test_record_operation_includes_bank_id_when_enabled(self, monkeypatch):
-        """Test that bank_id is included in attributes when HINDSIGHT_API_METRICS_INCLUDE_BANK_ID is set."""
-        monkeypatch.setenv("HINDSIGHT_API_METRICS_INCLUDE_BANK_ID", "true")
-        with patch("hindsight_api.metrics.get_meter") as mock_get_meter:
+    def test_record_operation_includes_bank_id_when_enabled(self):
+        """Test that bank_id is included in attributes when metrics_include_bank_id is enabled."""
+        mock_config = MagicMock()
+        mock_config.metrics_include_bank_id = True
+        with patch("hindsight_api.metrics.get_meter") as mock_get_meter, \
+             patch("hindsight_api.config.get_config", return_value=mock_config):
             mock_get_meter.return_value = MagicMock()
             collector = MetricsCollector()
 
@@ -282,7 +287,10 @@ class TestLLMMetrics:
     @pytest.fixture
     def collector(self, mock_meter):
         """Create a MetricsCollector with a mock meter."""
-        with patch("hindsight_api.metrics.get_meter", return_value=mock_meter):
+        mock_config = MagicMock()
+        mock_config.metrics_include_bank_id = False
+        with patch("hindsight_api.metrics.get_meter", return_value=mock_meter), \
+             patch("hindsight_api.config.get_config", return_value=mock_config):
             return MetricsCollector()
 
     def test_record_llm_call_records_duration(self, collector):
