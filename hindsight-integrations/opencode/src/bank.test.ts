@@ -1,36 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { deriveBankId, ensureBankMission } from './bank.js';
-import type { HindsightConfig } from './config.js';
-
-function makeConfig(overrides: Partial<HindsightConfig> = {}): HindsightConfig {
-    return {
-        autoRecall: true,
-        recallBudget: 'mid',
-        recallMaxTokens: 1024,
-        recallTypes: ['world', 'experience'],
-        recallContextTurns: 1,
-        recallMaxQueryChars: 800,
-        recallPromptPreamble: '',
-        autoRetain: true,
-        retainMode: 'full-session',
-        retainEveryNTurns: 10,
-        retainOverlapTurns: 2,
-        retainContext: 'opencode',
-        retainTags: [],
-        retainMetadata: {},
-        hindsightApiUrl: null,
-        hindsightApiToken: null,
-        bankId: null,
-        bankIdPrefix: '',
-        dynamicBankId: false,
-        dynamicBankGranularity: ['agent', 'project'],
-        bankMission: '',
-        retainMission: null,
-        agentName: 'opencode',
-        debug: false,
-        ...overrides,
-    };
-}
+import { makeConfig } from './test-helpers.js';
 
 describe('deriveBankId', () => {
     const originalEnv = { ...process.env };

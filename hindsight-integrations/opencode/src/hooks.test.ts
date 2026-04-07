@@ -1,36 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createHooks, type PluginState } from './hooks.js';
-import type { HindsightConfig } from './config.js';
-
-function makeConfig(overrides: Partial<HindsightConfig> = {}): HindsightConfig {
-    return {
-        autoRecall: true,
-        recallBudget: 'mid',
-        recallMaxTokens: 1024,
-        recallTypes: ['world', 'experience'],
-        recallContextTurns: 1,
-        recallMaxQueryChars: 800,
-        recallPromptPreamble: 'Relevant memories:',
-        autoRetain: true,
-        retainMode: 'full-session',
-        retainEveryNTurns: 1,
-        retainOverlapTurns: 2,
-        retainContext: 'opencode',
-        retainTags: [],
-        retainMetadata: {},
-        hindsightApiUrl: 'http://localhost:8888',
-        hindsightApiToken: null,
-        bankId: null,
-        bankIdPrefix: '',
-        dynamicBankId: false,
-        dynamicBankGranularity: ['agent', 'project'],
-        bankMission: '',
-        retainMission: null,
-        agentName: 'opencode',
-        debug: false,
-        ...overrides,
-    };
-}
+import { makeConfig } from './test-helpers.js';
 
 function makeState(): PluginState {
     return {
@@ -76,7 +46,7 @@ describe('event hook — session.idle', () => {
         ];
         const opencodeClient = makeOpencodeClient(messages);
         const state = makeState();
-        const hooks = createHooks(client, 'bank', makeConfig(), state, opencodeClient);
+        const hooks = createHooks(client, 'bank', makeConfig({ retainEveryNTurns: 1 }), state, opencodeClient);
 
         await hooks.event({
             event: { type: 'session.idle', properties: { sessionID: 'sess-1' } },
@@ -158,7 +128,7 @@ describe('event hook — session.idle', () => {
             { role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
             { role: 'assistant', parts: [{ type: 'text', text: 'Hi' }] },
         ];
-        const hooks = createHooks(client, 'bank', makeConfig(), makeState(), makeOpencodeClient(messages));
+        const hooks = createHooks(client, 'bank', makeConfig({ retainEveryNTurns: 1 }), makeState(), makeOpencodeClient(messages));
 
         await expect(
             hooks.event({

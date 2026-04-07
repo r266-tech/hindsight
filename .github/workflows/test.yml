@@ -332,7 +332,7 @@ jobs:
       working-directory: ./hindsight-integrations/ai-sdk
       run: npm run test:deno
 
-  build-opencode-integration:
+  test-opencode-integration:
     needs: [detect-changes]
     if: >-
       github.event_name != 'pull_request_review' &&
@@ -2495,7 +2495,7 @@ jobs:
       - test-codex-integration
       - build-ai-sdk-integration
       - test-ai-sdk-integration-deno
-      - build-opencode-integration
+      - test-opencode-integration
       - build-chat-integration
       - test-paperclip-integration
       - build-control-plane

@@ -1,36 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createTools } from './tools.js';
-import type { HindsightConfig } from './config.js';
-
-function makeConfig(overrides: Partial<HindsightConfig> = {}): HindsightConfig {
-    return {
-        autoRecall: true,
-        recallBudget: 'mid',
-        recallMaxTokens: 1024,
-        recallTypes: ['world', 'experience'],
-        recallContextTurns: 1,
-        recallMaxQueryChars: 800,
-        recallPromptPreamble: '',
-        autoRetain: true,
-        retainMode: 'full-session',
-        retainEveryNTurns: 10,
-        retainOverlapTurns: 2,
-        retainContext: 'opencode',
-        retainTags: [],
-        retainMetadata: {},
-        hindsightApiUrl: null,
-        hindsightApiToken: null,
-        bankId: null,
-        bankIdPrefix: '',
-        dynamicBankId: false,
-        dynamicBankGranularity: ['agent', 'project'],
-        bankMission: '',
-        retainMission: null,
-        agentName: 'opencode',
-        debug: false,
-        ...overrides,
-    };
-}
+import { makeConfig } from './test-helpers.js';
 
 const mockContext = {
     sessionID: 'sess-1',
