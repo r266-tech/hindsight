@@ -6449,10 +6449,6 @@ class MemoryEngine(MemoryEngineInterface):
         Returns:
             Pinned mental model dict or None if not found
         """
-        try:
-            mm_uuid = uuid.UUID(mental_model_id)
-        except ValueError:
-            raise ValueError(f"Invalid mental_model_id: '{mental_model_id}' is not a valid UUID")
         await self._authenticate_tenant(request_context)
 
         # Pre-operation validation (credit check / usage metering)
@@ -6478,7 +6474,7 @@ class MemoryEngine(MemoryEngineInterface):
                 WHERE bank_id = $1 AND id = $2
                 """,
                 bank_id,
-                str(mm_uuid),
+                mental_model_id,
             )
 
             result = self._row_to_mental_model(row, detail=detail) if row else None
@@ -6516,13 +6512,7 @@ class MemoryEngine(MemoryEngineInterface):
         Returns None if the mental model is not found.
         Returns a list of history entries (most recent first), each with previous_content and changed_at.
 
-        Raises:
-            ValueError: If mental_model_id is not a valid UUID
         """
-        try:
-            mm_uuid = uuid.UUID(mental_model_id)
-        except ValueError:
-            raise ValueError(f"Invalid mental_model_id: '{mental_model_id}' is not a valid UUID")
         await self._authenticate_tenant(request_context)
         pool = await self._get_pool()
         async with acquire_with_retry(pool) as conn:
@@ -6533,7 +6523,7 @@ class MemoryEngine(MemoryEngineInterface):
                 WHERE bank_id = $1 AND id = $2
                 """,
                 bank_id,
-                str(mm_uuid),
+                mental_model_id,
             )
             if row is None:
                 return None
@@ -6869,10 +6859,6 @@ class MemoryEngine(MemoryEngineInterface):
         Returns:
             True if deleted, False if not found
         """
-        try:
-            mm_uuid = uuid.UUID(mental_model_id)
-        except ValueError:
-            raise ValueError(f"Invalid mental_model_id: '{mental_model_id}' is not a valid UUID")
         await self._authenticate_tenant(request_context)
         if self._operation_validator:
             from hindsight_api.extensions import BankWriteContext
@@ -6885,7 +6871,7 @@ class MemoryEngine(MemoryEngineInterface):
             result = await conn.execute(
                 f"DELETE FROM {fq_table('mental_models')} WHERE bank_id = $1 AND id = $2",
                 bank_id,
-                str(mm_uuid),
+                mental_model_id,
             )
 
         return result == "DELETE 1"
