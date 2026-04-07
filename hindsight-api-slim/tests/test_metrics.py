@@ -95,7 +95,7 @@ class TestMetricsCollector:
         # Second arg is attributes dict
         attributes = call_args[0][1]
         assert attributes["operation"] == "recall"
-        assert attributes["bank_id"] == "test_bank"
+        assert "bank_id" not in attributes  # excluded by default to avoid high-cardinality OTel growth
         assert attributes["source"] == "api"
         assert attributes["success"] == "true"
 
@@ -165,6 +165,19 @@ class TestMetricsCollector:
         reflect_attrs = calls[1][0][1]
         assert reflect_attrs["operation"] == "reflect"
         assert reflect_attrs["source"] == "api"
+
+    def test_record_operation_includes_bank_id_when_enabled(self, monkeypatch):
+        """Test that bank_id is included in attributes when HINDSIGHT_API_METRICS_INCLUDE_BANK_ID is set."""
+        monkeypatch.setenv("HINDSIGHT_API_METRICS_INCLUDE_BANK_ID", "true")
+        with patch("hindsight_api.metrics.get_meter") as mock_get_meter:
+            mock_get_meter.return_value = MagicMock()
+            collector = MetricsCollector()
+
+        with collector.record_operation("recall", bank_id="test_bank", source="api"):
+            pass
+
+        attributes = collector.operation_duration.record.call_args[0][1]
+        assert attributes["bank_id"] == "test_bank"
 
 
 class TestGetMetricsCollector:
