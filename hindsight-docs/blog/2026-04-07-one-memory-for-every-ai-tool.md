@@ -2,7 +2,7 @@
 title: "One Memory for Every AI Tool I Use"
 authors: [404sand808s]
 date: 2026-04-07
-tags: [mcp, memory, claude, claude-code, openai, hindsight, integration, self-hosting]
+tags: [mcp, memory, claude, claude-code, openai, hindsight, integration, self-hosting, hindsight-cloud]
 description: "How to wire Claude, ChatGPT, Claude Code, Codex, and OpenClaw to a single shared Hindsight memory bank using Cloudflare Workers as an OAuth 2.1 proxy."
 hide_table_of_contents: true
 ---
@@ -28,6 +28,8 @@ Imagine: on the go, an idea strikes. You plug it into the Claude app and think t
 The effect is cumulative. After a week, you stop noticing the things you don't have to say anymore. Preferences, past decisions, project context, technical choices. It all carries over and makes each tool better at its job. The shared memory doesn't just save time, it makes the outputs better.
 
 ## How the shared memory stack is wired together
+
+If you're using [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup), none of the OAuth complexity below applies — it already speaks OAuth 2.1, so all cloud clients connect directly. The proxy setup is only needed if you're self-hosting.
 
 My [Hindsight](/developer/api/quickstart) bank runs in Docker on an M4 Mac Mini (same as my OpenClaw). All clients connect to the same bank, but each one connects differently.
 
@@ -58,7 +60,7 @@ I'm working with the Hindsight team to contribute the Worker as a reference OAut
 
 The multi-client, single-bank pattern is where Hindsight has a real edge. Hindsight's architecture already supports sharing across all of them, with just a small gap to close on the OAuth front. One thing would further improve this pattern: MCP lifecycle hooks in the Claude apps. Claude Code's CLI already has them, and Hindsight's plugin uses them for automatic memory. Bringing the same capability to the desktop and mobile apps would close the last gap.
 
-If you want to try it:
+The easiest way to try this pattern is [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup) — no infrastructure, no OAuth proxy, connects directly to all cloud clients. Self-hosters can use the Worker reference once it's published.
 
 - **Get started with Hindsight Cloud**: [ui.hindsight.vectorize.io/signup](https://ui.hindsight.vectorize.io/signup)
 - **Claude Code integration**: [/sdks/integrations/claude-code](/sdks/integrations/claude-code)
