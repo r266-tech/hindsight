@@ -1,14 +1,14 @@
 ---
-title: "The Memory Upgrade Every Codex User Needs"
+title: "Adding Persistent Memory to OpenAI Codex with Hindsight"
 authors: [benfrank241]
 date: 2026-04-01T09:00
-tags: [codex, memory, hindsight, tutorial]
+tags: [codex, openai, memory, persistent-memory, hindsight, tutorial, coding-agents, python]
 image: /img/blog/adding-memory-to-codex-with-hindsight.png
-description: "Codex has no persistent memory — every session starts from scratch. The Hindsight plugin hooks in automatically: facts extracted from your conversations, recalled before every prompt."
+description: "Give OpenAI Codex persistent memory across sessions with Hindsight. Auto-recall injects context before every prompt. Auto-retain extracts facts when sessions end."
 hide_table_of_contents: true
 ---
 
-![The Memory Upgrade Every Codex User Needs](/img/blog/adding-memory-to-codex-with-hindsight.png)
+![Adding Persistent Memory to OpenAI Codex with Hindsight](/img/blog/adding-memory-to-codex-with-hindsight.png)
 
 ## TL;DR
 
@@ -20,7 +20,7 @@ hide_table_of_contents: true
 - Auto-retain fires at the end of every session, extracts facts from the transcript, and stores them for future recall.
 - For teams, point everyone's config at a shared Hindsight server with a fixed `bankId`. See [Shared Memory for AI Coding Agents](/blog/2026/03/31/team-shared-memory-ai-coding-agents).
 
-## The Problem
+## The Problem: Codex Has No Persistent Memory
 
 [Codex](https://github.com/openai/codex) is OpenAI's open-source coding agent CLI. You give it a task, it reads your files, runs commands, and iterates until it's done. It's capable and fast — but it has no memory.
 
@@ -28,7 +28,7 @@ Every session starts from nothing. Codex doesn't know which libraries your proje
 
 `AGENTS.md` helps — it's a static markdown file that tells Codex baseline facts about your project on startup. But it captures what you remembered to write down, not what you actually encountered. The Redis TTL discrepancy you noticed Tuesday at 3pm, the JWT edge case that surfaced during code review, the reason you stopped using SQLAlchemy — these live in session transcripts that vanish when the window closes. Nobody updated `AGENTS.md`. Next session, that knowledge is gone.
 
-## The Approach
+## How Hindsight Adds Persistent Memory to Codex
 
 [Hindsight](https://github.com/vectorize-io/hindsight) adds a persistent memory layer to Codex by hooking into its lifecycle at two points: before every prompt and after every session.
 
@@ -101,6 +101,12 @@ Codex sees this block; it doesn't appear in your terminal output. The result: Co
 
 You can tune how much to inject with `recallBudget` (`"low"`, `"mid"`, `"high"`) and `recallMaxTokens`.
 
+### Before and after
+
+Without persistent memory, you open a session and type: "Continue working on the payments module." Codex has no context. It reads the files, makes reasonable guesses, and may ask clarifying questions you've answered before, or worse, contradict decisions you made last week.
+
+With Hindsight, the same session opens with recalled facts already in context: which payment provider you're using, that you decided against webhooks in favor of polling, and that the staging environment has a known issue with idempotency keys. Codex starts from where you left off, not from zero.
+
 ## Per-Project Memory
 
 By default all Codex sessions share a single bank. To give each project its own isolated memory:
@@ -113,6 +119,24 @@ By default all Codex sessions share a single bank. To give each project its own 
 ```
 
 With this config, running Codex in `~/projects/api` and `~/projects/frontend` maintains separate banks. Bank IDs are derived from the working directory path — switching projects automatically switches memory context.
+
+## Team Shared Memory
+
+Individual persistent memory is useful. Shared memory across a team is transformative.
+
+When everyone on a team points their Codex config at the same Hindsight bank, context accumulated by one developer becomes available to all. A bug discovered on Monday surfaces in recall on Tuesday, regardless of who's asking. Architecture decisions made in one session inform the next, without requiring anyone to update a shared doc.
+
+To configure team shared memory, set a fixed `bankId` in each developer's config and point them at the same Hindsight Cloud endpoint:
+
+```json
+{
+  "hindsightApiUrl": "https://api.hindsight.vectorize.io",
+  "hindsightApiToken": "hsk_your_token",
+  "bankId": "my-team-project"
+}
+```
+
+See [Shared Memory for AI Coding Agents](/blog/2026/03/31/team-shared-memory-ai-coding-agents) for a full team setup guide including bank seeding, per-project isolation, and onboarding patterns.
 
 ## Key Configuration Options
 
