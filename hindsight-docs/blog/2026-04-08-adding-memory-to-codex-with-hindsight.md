@@ -1,7 +1,7 @@
 ---
 title: "Adding Persistent Memory to OpenAI Codex with Hindsight"
 authors: [benfrank241]
-date: 2026-04-01T09:00
+date: 2026-04-08T09:00
 tags: [codex, openai, memory, persistent-memory, hindsight, tutorial, coding-agents, python]
 image: /img/blog/adding-memory-to-codex-with-hindsight.png
 description: "Give OpenAI Codex persistent memory across sessions with Hindsight. Auto-recall injects context before every prompt. Auto-retain extracts facts when sessions end."
