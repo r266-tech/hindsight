@@ -80,68 +80,69 @@ class WebhookManager:
         payload_str = event.model_dump_json()
 
         try:
-            # Load per-bank webhooks from DB (bank-specific + global NULL rows)
-            rows = await self._pool.fetch(
-                f"""
-                SELECT id, bank_id, url, secret, event_types, enabled, http_config::text
-                FROM {webhook_table}
-                WHERE (bank_id = $1 OR bank_id IS NULL) AND enabled = true
-                """,
-                event.bank_id,
-            )
-
-            db_webhooks = [
-                WebhookConfig(
-                    id=str(row["id"]),
-                    bank_id=row["bank_id"],
-                    url=row["url"],
-                    secret=row["secret"],
-                    event_types=list(row["event_types"]) if row["event_types"] else [],
-                    enabled=row["enabled"],
-                    http_config=_parse_http_config(row["http_config"]),
-                )
-                for row in rows
-            ]
-
-            # Merge with global webhooks from env config
-            all_webhooks = self._global_webhooks + db_webhooks
-            matched = 0
-
-            for webhook in all_webhooks:
-                if not webhook.enabled:
-                    continue
-                if event.event.value not in webhook.event_types:
-                    continue
-
-                operation_id = uuid.uuid4()
-                webhook_id = webhook.id if webhook.id else None
-
-                task_payload = json.dumps(
-                    {
-                        "type": "webhook_delivery",
-                        "operation_id": str(operation_id),
-                        "bank_id": event.bank_id,
-                        "url": webhook.url,
-                        "secret": webhook.secret,
-                        "event_type": event.event.value,
-                        "payload": payload_str,
-                        "webhook_id": webhook_id,
-                        "http_config": webhook.http_config.model_dump(),
-                    }
-                )
-
-                await self._pool.execute(
+            async with self._pool.acquire() as conn:
+                # Load per-bank webhooks from DB (bank-specific + global NULL rows)
+                rows = await conn.fetch(
                     f"""
-                    INSERT INTO {ops_table}
-                      (operation_id, bank_id, operation_type, status, task_payload, result_metadata, created_at, updated_at)
-                    VALUES ($1, $2, 'webhook_delivery', 'pending', $3::jsonb, '{{}}'::jsonb, $4, $4)
+                    SELECT id, bank_id, url, secret, event_types, enabled, http_config::text
+                    FROM {webhook_table}
+                    WHERE (bank_id = $1 OR bank_id IS NULL) AND enabled = true
                     """,
-                    operation_id,
                     event.bank_id,
-                    task_payload,
-                    now,
                 )
-                matched += 1
+
+                db_webhooks = [
+                    WebhookConfig(
+                        id=str(row["id"]),
+                        bank_id=row["bank_id"],
+                        url=row["url"],
+                        secret=row["secret"],
+                        event_types=list(row["event_types"]) if row["event_types"] else [],
+                        enabled=row["enabled"],
+                        http_config=_parse_http_config(row["http_config"]),
+                    )
+                    for row in rows
+                ]
+
+                # Merge with global webhooks from env config
+                all_webhooks = self._global_webhooks + db_webhooks
+                matched = 0
+
+                for webhook in all_webhooks:
+                    if not webhook.enabled:
+                        continue
+                    if event.event.value not in webhook.event_types:
+                        continue
+
+                    operation_id = uuid.uuid4()
+                    webhook_id = webhook.id if webhook.id else None
+
+                    task_payload = json.dumps(
+                        {
+                            "type": "webhook_delivery",
+                            "operation_id": str(operation_id),
+                            "bank_id": event.bank_id,
+                            "url": webhook.url,
+                            "secret": webhook.secret,
+                            "event_type": event.event.value,
+                            "payload": payload_str,
+                            "webhook_id": webhook_id,
+                            "http_config": webhook.http_config.model_dump(),
+                        }
+                    )
+
+                    await conn.execute(
+                        f"""
+                        INSERT INTO {ops_table}
+                          (operation_id, bank_id, operation_type, status, task_payload, result_metadata, created_at, updated_at)
+                        VALUES ($1, $2, 'webhook_delivery', 'pending', $3::jsonb, '{{}}'::jsonb, $4, $4)
+                        """,
+                        operation_id,
+                        event.bank_id,
+                        task_payload,
+                        now,
+                    )
+                    matched += 1
 
             logger.debug(f"Fired webhook event {event.event} for bank {event.bank_id}: {matched} delivery(ies) queued")
 

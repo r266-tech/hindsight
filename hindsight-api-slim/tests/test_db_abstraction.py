@@ -232,6 +232,62 @@ class TestOracleDialect:
 
 
 # ---------------------------------------------------------------------------
+# Oracle query rewriter tests
+# ---------------------------------------------------------------------------
+
+
+class TestOracleQueryRewriter:
+    def test_param_rewrite(self):
+        from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
+
+        assert ":1" in _rewrite_pg_to_oracle("SELECT $1 FROM t")
+        assert ":2" in _rewrite_pg_to_oracle("WHERE a = $1 AND b = $2")
+
+    def test_cast_removal(self):
+        from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
+
+        result = _rewrite_pg_to_oracle("$1::jsonb")
+        assert "::jsonb" not in result
+        assert ":1" in result
+
+    def test_multiple_casts(self):
+        from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
+
+        result = _rewrite_pg_to_oracle("$1::text, $2::uuid, $3::varchar[]")
+        assert "::text" not in result
+        assert "::uuid" not in result
+        assert "::varchar[]" not in result
+
+    def test_now_to_systimestamp(self):
+        from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
+
+        assert "SYSTIMESTAMP" in _rewrite_pg_to_oracle("updated_at > NOW()")
+        assert "NOW()" not in _rewrite_pg_to_oracle("updated_at > NOW()")
+
+    def test_gen_random_uuid(self):
+        from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
+
+        assert "SYS_GUID()" in _rewrite_pg_to_oracle("gen_random_uuid()")
+
+    def test_combined_rewrite(self):
+        from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
+
+        result = _rewrite_pg_to_oracle(
+            "INSERT INTO t (id, data) VALUES ($1::uuid, $2::jsonb) RETURNING id"
+        )
+        assert ":1" in result
+        assert ":2" in result
+        assert "::uuid" not in result
+        assert "::jsonb" not in result
+
+    def test_no_rewrite_needed(self):
+        from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
+
+        query = "SELECT 1 FROM DUAL"
+        assert _rewrite_pg_to_oracle(query) == query
+
+
+# ---------------------------------------------------------------------------
 # PostgreSQLBackend unit tests (no live DB)
 # ---------------------------------------------------------------------------
 

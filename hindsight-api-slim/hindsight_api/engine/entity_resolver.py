@@ -11,8 +11,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
-
-import asyncpg
+from typing import Any
 
 from .db_utils import acquire_with_retry
 from .memory_engine import fq_table
@@ -63,7 +62,7 @@ class EntityResolver:
     Resolves entities to canonical IDs with disambiguation.
     """
 
-    def __init__(self, pool: asyncpg.Pool, entity_lookup: str = "full"):
+    def __init__(self, pool: Any, entity_lookup: str = "full"):
         """
         Initialize entity resolver.
 

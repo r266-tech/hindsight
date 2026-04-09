@@ -20,6 +20,18 @@ class DatabaseConnection(ABC):
     """
 
     @abstractmethod
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator["DatabaseConnection"]:
+        """Start a transaction (or savepoint if already in a transaction).
+
+        Yields:
+            Self — the same connection, now inside a transaction scope.
+            On clean exit the transaction is committed; on exception it is rolled back.
+        """
+        ...  # pragma: no cover
+        yield  # type: ignore[misc]
+
+    @abstractmethod
     async def execute(self, query: str, *args: Any, timeout: float | None = None) -> str:
         """Execute a query and return a status string (e.g. 'INSERT 0 1').
 
@@ -86,6 +98,24 @@ class DatabaseConnection(ABC):
             The value from the specified column of the first row, or None.
         """
         ...
+
+    async def copy_records_to_table(
+        self,
+        table_name: str,
+        *,
+        records: list[tuple[Any, ...]],
+        columns: list[str],
+        timeout: float | None = None,
+    ) -> None:
+        """Bulk-load records into a table.
+
+        Default implementation uses executemany INSERT. Backends with native
+        bulk-load support (e.g. asyncpg COPY) should override for performance.
+        """
+        cols = ", ".join(columns)
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(columns)))
+        query = f"INSERT INTO {table_name} ({cols}) VALUES ({placeholders})"
+        await self.executemany(query, list(records))
 
 
 class DatabaseBackend(ABC):

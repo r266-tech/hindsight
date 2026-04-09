@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-import asyncpg
+import asyncpg  # noqa: F401
 
 from .base import DatabaseBackend, DatabaseConnection
 from .result import ResultRow
@@ -24,6 +24,11 @@ class PostgresConnection(DatabaseConnection):
 
     def __init__(self, conn: asyncpg.Connection) -> None:
         self._conn = conn
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator["PostgresConnection"]:
+        async with self._conn.transaction():
+            yield self
 
     async def execute(self, query: str, *args: Any, timeout: float | None = None) -> str:
         return await self._conn.execute(query, *args, timeout=timeout)
@@ -43,6 +48,17 @@ class PostgresConnection(DatabaseConnection):
 
     async def fetchval(self, query: str, *args: Any, column: int = 0, timeout: float | None = None) -> Any:
         return await self._conn.fetchval(query, *args, column=column, timeout=timeout)
+
+    async def copy_records_to_table(
+        self,
+        table_name: str,
+        *,
+        records: list[tuple[Any, ...]],
+        columns: list[str],
+        timeout: float | None = None,
+    ) -> None:
+        """Use asyncpg's native COPY for fast bulk loading."""
+        await self._conn.copy_records_to_table(table_name, records=records, columns=columns, timeout=timeout)
 
 
 class PostgreSQLBackend(DatabaseBackend):

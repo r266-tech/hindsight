@@ -373,7 +373,7 @@ class TestOracleConnectionMethods:
         await backend.initialize(f"{test_schema}/testpass@{oracle_dsn}", min_size=1, max_size=2)
         prefix = f"em-{uuid.uuid4().hex[:6]}"
         try:
-            async with backend.acquire() as conn:
+            async with backend.transaction() as conn:
                 await conn.executemany(
                     "INSERT INTO banks (bank_id, name) VALUES (:1, :2)",
                     [
@@ -494,7 +494,7 @@ class TestOracleJsonOps:
         await backend.initialize(f"{test_schema}/testpass@{oracle_dsn}", min_size=1, max_size=2)
         bank_id = f"json-{uuid.uuid4().hex[:6]}"
         try:
-            async with backend.acquire() as conn:
+            async with backend.transaction() as conn:
                 await conn.execute(
                     "INSERT INTO banks (bank_id, disposition) VALUES (:1, :2)",
                     bank_id,
@@ -523,13 +523,13 @@ class TestOracleJsonOps:
         await backend.initialize(f"{test_schema}/testpass@{oracle_dsn}", min_size=1, max_size=2)
         bank_id = f"merge-{uuid.uuid4().hex[:6]}"
         try:
-            async with backend.acquire() as conn:
+            async with backend.transaction() as conn:
                 await conn.execute(
                     "INSERT INTO banks (bank_id, disposition) VALUES (:1, :2)",
                     bank_id,
                     json.dumps({"skepticism": 3}),
                 )
-            async with backend.acquire() as conn:
+            async with backend.transaction() as conn:
                 await conn.execute(
                     """
                     UPDATE banks SET disposition = JSON_MERGEPATCH(disposition, :1)
@@ -577,7 +577,7 @@ class TestOracleUpsert:
                 ["mention_count"],
             )
 
-            async with backend.acquire() as conn:
+            async with backend.transaction() as conn:
                 # First: insert
                 await conn.execute(sql, bank_id, "Alice", 1)
             async with backend.acquire() as conn:
@@ -588,7 +588,7 @@ class TestOracleUpsert:
                 )
                 assert row["mention_count"] == 1
 
-            async with backend.acquire() as conn:
+            async with backend.transaction() as conn:
                 # Second: update
                 await conn.execute(sql, bank_id, "Alice", 99)
             async with backend.acquire() as conn:
@@ -618,7 +618,7 @@ class TestOracleIlike:
         await backend.initialize(f"{test_schema}/testpass@{oracle_dsn}", min_size=1, max_size=2)
         bank_id = f"ilike-{uuid.uuid4().hex[:6]}"
         try:
-            async with backend.acquire() as conn:
+            async with backend.transaction() as conn:
                 await conn.execute(
                     "INSERT INTO entities (bank_id, canonical_name, mention_count) VALUES (:1, :2, :3)",
                     bank_id,
@@ -626,12 +626,12 @@ class TestOracleIlike:
                     1,
                 )
 
-            ilike_expr = dialect.ilike("canonical_name", ":1")
+            ilike_expr = dialect.ilike("canonical_name", ":2")
             async with backend.acquire() as conn:
                 row = await conn.fetchrow(
-                    f"SELECT canonical_name FROM entities WHERE bank_id = :2 AND {ilike_expr}",
-                    "%alice%",
+                    f"SELECT canonical_name FROM entities WHERE bank_id = :1 AND {ilike_expr}",
                     bank_id,
+                    "%alice%",
                 )
                 assert row is not None
                 assert row["canonical_name"] == "Alice Johnson"
@@ -655,7 +655,7 @@ class TestOracleFuzzyMatching:
         await backend.initialize(f"{test_schema}/testpass@{oracle_dsn}", min_size=1, max_size=2)
         bank_id = f"fuzz-{uuid.uuid4().hex[:6]}"
         try:
-            async with backend.acquire() as conn:
+            async with backend.transaction() as conn:
                 for name in ["Alice Johnson", "Alicia Jonson", "Bob Smith"]:
                     await conn.execute(
                         "INSERT INTO entities (bank_id, canonical_name, mention_count) VALUES (:1, :2, :3)",
@@ -664,19 +664,23 @@ class TestOracleFuzzyMatching:
                         1,
                     )
 
-            sim_expr = dialect.similarity("canonical_name", ":1")
+            # Use named params since similarity expression references :search_name multiple times
+            sim_expr = dialect.similarity("canonical_name", ":search_name")
             async with backend.acquire() as conn:
-                rows = await conn.fetch(
+                raw_conn = conn._conn
+                cursor = raw_conn.cursor()
+                await cursor.execute(
                     f"""
                     SELECT canonical_name, {sim_expr} AS sim
                     FROM entities
-                    WHERE bank_id = :2 AND {sim_expr} > 0.5
+                    WHERE bank_id = :bank_id AND {sim_expr} > 0.5
                     ORDER BY {sim_expr} DESC
                     """,
-                    "Alice Jonson",
-                    bank_id,
+                    {"search_name": "Alice Jonson", "bank_id": bank_id},
                 )
-                names = [r["canonical_name"] for r in rows]
+                rows_raw = await cursor.fetchall()
+                cursor.close()
+                names = [r[0] for r in rows_raw]
                 # Should match Alice/Alicia but not Bob
                 assert any("Alice" in n or "Alicia" in n for n in names)
                 assert not any("Bob" in n for n in names)
@@ -700,7 +704,7 @@ class TestOracleLocking:
         await backend.initialize(f"{test_schema}/testpass@{oracle_dsn}", min_size=1, max_size=4)
         op_id = f"lock-{uuid.uuid4().hex[:6]}"
         try:
-            async with backend.acquire() as conn:
+            async with backend.transaction() as conn:
                 await conn.execute(
                     "INSERT INTO async_operations (operation_id, bank_id, operation_type, status) "
                     "VALUES (:1, :2, :3, :4)",
@@ -739,7 +743,7 @@ class TestOraclePagination:
         await backend.initialize(f"{test_schema}/testpass@{oracle_dsn}", min_size=1, max_size=2)
         bank_id = f"page-{uuid.uuid4().hex[:6]}"
         try:
-            async with backend.acquire() as conn:
+            async with backend.transaction() as conn:
                 for i in range(10):
                     await conn.execute(
                         "INSERT INTO memory_units (id, bank_id, text, fact_type) VALUES (:1, :2, :3, :4)",
@@ -749,19 +753,23 @@ class TestOraclePagination:
                         "world",
                     )
 
-            limit_clause = dialect.limit_offset(":1", ":2")
+            limit_clause = dialect.limit_offset(":lim", ":off")
             async with backend.acquire() as conn:
-                rows = await conn.fetch(
+                raw_conn = conn._conn
+                cursor = raw_conn.cursor()
+                await cursor.execute(
                     f"""
                     SELECT text FROM memory_units
-                    WHERE bank_id = :3
-                    ORDER BY text
+                    WHERE bank_id = :bank_id
+                    ORDER BY TO_CHAR(text)
                     {limit_clause}
                     """,
-                    3,  # limit
-                    2,  # offset
-                    bank_id,
+                    {"bank_id": bank_id, "lim": 3, "off": 2},
                 )
+                columns = [col[0].lower() for col in cursor.description or []]
+                raw_rows = await cursor.fetchall()
+                cursor.close()
+                rows = [dict(zip(columns, r)) for r in raw_rows]
                 assert len(rows) == 3
                 # Should be fact-02, fact-03, fact-04 (offset 2 from sorted list)
                 assert rows[0]["text"] == "fact-02"
