@@ -32,6 +32,7 @@ jobs:
       helm: ${{ steps.filter.outputs.helm }}
       docs: ${{ steps.filter.outputs.docs }}
       embed: ${{ steps.filter.outputs.embed }}
+      embed-npm: ${{ steps.filter.outputs.embed-npm }}
       hindsight-all: ${{ steps.filter.outputs.hindsight-all }}
       integration-tests: ${{ steps.filter.outputs.integration-tests }}
       integrations-openclaw: ${{ steps.filter.outputs.integrations-openclaw }}
@@ -92,6 +93,10 @@ jobs:
             - '*.md'
           embed:
             - 'hindsight-embed/**'
+          embed-npm:
+            - 'hindsight-embed-npm/**'
+            - 'package.json'
+            - 'package-lock.json'
           hindsight-all:
             - 'hindsight-all/**'
           integration-tests:
@@ -182,6 +187,36 @@ jobs:
 
     - name: Build TypeScript client
       run: npm run build --workspace=hindsight-clients/typescript
+
+  build-hindsight-embed-npm:
+    needs: [detect-changes]
+    if: >-
+      github.event_name != 'pull_request_review' &&
+      (github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.embed-npm == 'true' ||
+      needs.detect-changes.outputs.ci == 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || '' }}
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: package-lock.json
+
+    - name: Install dependencies
+      run: npm ci --workspace=hindsight-embed-npm
+
+    - name: Run tests
+      run: npm test --workspace=hindsight-embed-npm
+
+    - name: Build
+      run: npm run build --workspace=hindsight-embed-npm
 
   build-openclaw-integration:
     needs: [detect-changes]
@@ -2524,8 +2559,7 @@ jobs:
             core.setOutput('run_url', runUrl);
 
       - name: Report status to PR
-        if: github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             await github.rest.repos.createCommitStatus({
