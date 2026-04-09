@@ -30,6 +30,7 @@ from ..tracing import create_operation_span
 from ..utils import mask_network_location
 from ..worker.exceptions import RetryTaskAt
 from .audit import AuditLogger, audit_context
+from .db import DatabaseBackend, create_database_backend
 from .db_budget import budgeted_operation
 from .operation_metadata import (
     BatchRetainChildMetadata,
@@ -38,6 +39,7 @@ from .operation_metadata import (
     RefreshMentalModelMetadata,
     RetainMetadata,
 )
+from .sql import SQLDialect, create_sql_dialect
 
 # Context variable for current schema (async-safe, per-task isolation)
 # Note: default is None, actual default comes from config via get_current_schema()
@@ -396,7 +398,11 @@ class MemoryEngine(MemoryEngineInterface):
             else:
                 memory_llm_base_url = ""
 
-        # Connection pool (will be created in initialize())
+        # Database backend and SQL dialect (created during initialize())
+        self._database_backend_type = config.database_backend
+        self._backend: DatabaseBackend | None = None
+        self._dialect: SQLDialect | None = None
+        # Connection pool — set from backend.get_pool() for backward compatibility
         self._pool = None
         self._initialized = False
         self._pool_min_size = pool_min_size if pool_min_size is not None else config.db_pool_min_size
@@ -1756,11 +1762,13 @@ class MemoryEngine(MemoryEngineInterface):
                             self.db_url, text_search_extension=config.text_search_extension, schema=schema
                         )
 
-        logger.info(f"Connecting to PostgreSQL at {mask_network_location(self.db_url)}")
+        logger.info(f"Connecting to database at {mask_network_location(self.db_url)}")
 
-        # Create connection pool
-        # For read-heavy workloads with many parallel think/search operations,
-        # we need a larger pool. Read operations don't need strong isolation.
+        # Create database backend and SQL dialect via abstraction layer
+        self._backend = create_database_backend(self._database_backend_type)
+        self._dialect = create_sql_dialect(self._database_backend_type)
+
+        # Per-connection initialization callback (PostgreSQL-specific for now)
         async def _init_connection(conn: asyncpg.Connection) -> None:
             # SET (not SET LOCAL) so it persists for the connection lifetime.
             # ef_search=200 improves HNSW recall quality for the per-fact_type
@@ -1770,15 +1778,20 @@ class MemoryEngine(MemoryEngineInterface):
             except Exception:
                 logger.debug("Could not set hnsw.ef_search — extension may not support it")
 
-        self._pool = await asyncpg.create_pool(
+        await self._backend.initialize(
             self.db_url,
             min_size=self._pool_min_size,
             max_size=self._pool_max_size,
             command_timeout=self._db_command_timeout,
-            statement_cache_size=0,  # Disable prepared statement cache
-            timeout=self._db_acquire_timeout,  # Connection acquisition timeout (seconds)
-            init=_init_connection,
+            acquire_timeout=self._db_acquire_timeout,
+            statement_cache_size=0,
+            init_callback=_init_connection,
         )
+
+        # Expose raw pool for backward compatibility with consumers that
+        # still use pool.acquire() / acquire_with_retry(pool) directly.
+        # These will be migrated to use self._backend.acquire() over time.
+        self._pool = self._backend.get_pool()
 
         # Initialize entity resolver with pool and configured lookup strategy
         self.entity_resolver = EntityResolver(
@@ -1916,9 +1929,10 @@ class MemoryEngine(MemoryEngineInterface):
             await self._http_client.aclose()
             self._http_client = None
 
-        # Close pool
-        if self._pool is not None:
-            self._pool.terminate()
+        # Close database backend (shuts down pool)
+        if self._backend is not None:
+            await self._backend.shutdown()
+            self._backend = None
             self._pool = None
 
         self._initialized = False
