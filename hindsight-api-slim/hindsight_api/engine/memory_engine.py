@@ -1140,6 +1140,16 @@ class MemoryEngine(MemoryEngineInterface):
                     logger.error(f"Not retrying task {task_type} (non-retryable), marking as failed")
                     if operation_id:
                         await self._mark_operation_failed(operation_id, str(e), error_traceback)
+                elif isinstance(e, asyncpg.IntegrityConstraintViolationError):
+                    # Non-retryable: constraint violations are deterministic and won't
+                    # succeed on retry (e.g. UniqueViolationError on pk_chunks when
+                    # re-submitting a retain with an existing document_id, see #977).
+                    logger.error(
+                        f"Not retrying task {task_type} (deterministic constraint violation: "
+                        f"{type(e).__name__}), marking as failed"
+                    )
+                    if operation_id:
+                        await self._mark_operation_failed(operation_id, str(e), error_traceback)
                 else:
                     if task_type == "consolidation" and operation_id:
                         # Fire failure webhook (non-transactional — operation not yet marked failed;
