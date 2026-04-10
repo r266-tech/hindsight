@@ -171,6 +171,12 @@ const sidebars: SidebarsConfig = {
           label: 'Embedded Python',
           customProps: { icon: '/img/icons/package.svg' },
         },
+        {
+          type: 'doc',
+          id: 'sdks/embed-npm',
+          label: 'Embedded Node.js',
+          customProps: { icon: '/img/icons/package.svg' },
+        },
       ],
     },
     {
