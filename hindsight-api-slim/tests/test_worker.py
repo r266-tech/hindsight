@@ -1646,3 +1646,142 @@ class TestMarkFailedParentPropagation:
             f"Parent batch_retain should be 'failed' after child fails via unhandled exception, "
             f"got '{parent_row['status']}'"
         )
+
+
+
+class TestStaleClaimReclamation:
+    """Tests for reclaiming tasks from dead workers (stale_claim_timeout_minutes)."""
+
+    @pytest.mark.asyncio
+    async def test_reclaim_stale_tasks_from_dead_worker(self, pool, clean_operations):
+        """Tasks stuck in 'processing' from a dead worker are reclaimed after timeout."""
+        from hindsight_api.worker.poller import WorkerPoller
+
+        bank_id = f"test-worker-{uuid.uuid4().hex[:8]}"
+        await _ensure_bank(pool, bank_id)
+        op_id = uuid.uuid4()
+
+        # Simulate a dead worker's stale claim (claimed 20 minutes ago)
+        await pool.execute(
+            """
+            INSERT INTO async_operations
+                (operation_id, bank_id, operation_type, status, worker_id, claimed_at, updated_at)
+            VALUES ($1, $2, 'consolidation', 'processing', 'dead-worker-abc', NOW() - INTERVAL '20 minutes', NOW())
+            """,
+            op_id,
+            bank_id,
+        )
+
+        async def noop_executor(task_dict):
+            pass
+
+        poller = WorkerPoller(
+            pool=pool,
+            worker_id="live-worker-xyz",
+            executor=noop_executor,
+            stale_claim_timeout_minutes=15,
+        )
+
+        reclaimed = await poller.reclaim_stale_tasks()
+        assert reclaimed == 1
+
+        row = await pool.fetchrow(
+            "SELECT status, worker_id, claimed_at, retry_count FROM async_operations WHERE operation_id = $1",
+            op_id,
+        )
+        assert row["status"] == "pending"
+        assert row["worker_id"] is None
+        assert row["claimed_at"] is None
+        assert row["retry_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_reclaim_does_not_touch_recent_claims(self, pool, clean_operations):
+        """Tasks claimed recently by another worker are NOT reclaimed."""
+        from hindsight_api.worker.poller import WorkerPoller
+
+        bank_id = f"test-worker-{uuid.uuid4().hex[:8]}"
+        await _ensure_bank(pool, bank_id)
+        op_id = uuid.uuid4()
+
+        # Another worker claimed this task 5 minutes ago (within 15-minute timeout)
+        await pool.execute(
+            """
+            INSERT INTO async_operations
+                (operation_id, bank_id, operation_type, status, worker_id, claimed_at, updated_at)
+            VALUES ($1, $2, 'retain', 'processing', 'other-worker-456', NOW() - INTERVAL '5 minutes', NOW())
+            """,
+            op_id,
+            bank_id,
+        )
+
+        async def noop_executor(task_dict):
+            pass
+
+        poller = WorkerPoller(
+            pool=pool,
+            worker_id="live-worker-xyz",
+            executor=noop_executor,
+            stale_claim_timeout_minutes=15,
+        )
+
+        reclaimed = await poller.reclaim_stale_tasks()
+        assert reclaimed == 0
+
+        row = await pool.fetchrow("SELECT status, worker_id FROM async_operations WHERE operation_id = $1", op_id)
+        assert row["status"] == "processing"
+        assert row["worker_id"] == "other-worker-456"
+
+    @pytest.mark.asyncio
+    async def test_reclaim_does_not_touch_own_tasks(self, pool, clean_operations):
+        """This worker's own in-flight tasks are never reclaimed, even if old."""
+        from hindsight_api.worker.poller import WorkerPoller
+
+        bank_id = f"test-worker-{uuid.uuid4().hex[:8]}"
+        await _ensure_bank(pool, bank_id)
+        op_id = uuid.uuid4()
+
+        # This worker's own task claimed 30 minutes ago (legitimately long-running)
+        await pool.execute(
+            """
+            INSERT INTO async_operations
+                (operation_id, bank_id, operation_type, status, worker_id, claimed_at, updated_at)
+            VALUES ($1, $2, 'consolidation', 'processing', 'live-worker-xyz', NOW() - INTERVAL '30 minutes', NOW())
+            """,
+            op_id,
+            bank_id,
+        )
+
+        async def noop_executor(task_dict):
+            pass
+
+        poller = WorkerPoller(
+            pool=pool,
+            worker_id="live-worker-xyz",
+            executor=noop_executor,
+            stale_claim_timeout_minutes=15,
+        )
+
+        reclaimed = await poller.reclaim_stale_tasks()
+        assert reclaimed == 0
+
+        row = await pool.fetchrow("SELECT status, worker_id FROM async_operations WHERE operation_id = $1", op_id)
+        assert row["status"] == "processing"
+        assert row["worker_id"] == "live-worker-xyz"
+
+    @pytest.mark.asyncio
+    async def test_reclaim_disabled_when_timeout_zero(self, pool, clean_operations):
+        """Setting stale_claim_timeout_minutes=0 disables reclamation."""
+        from hindsight_api.worker.poller import WorkerPoller
+
+        async def noop_executor(task_dict):
+            pass
+
+        poller = WorkerPoller(
+            pool=pool,
+            worker_id="live-worker-xyz",
+            executor=noop_executor,
+            stale_claim_timeout_minutes=0,
+        )
+
+        reclaimed = await poller.reclaim_stale_tasks()
+        assert reclaimed == 0

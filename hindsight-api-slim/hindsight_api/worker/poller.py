@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 # Progress logging interval in seconds
 PROGRESS_LOG_INTERVAL = 30
 
+# Interval between stale-claim reclamation checks (seconds)
+RECLAIM_CHECK_INTERVAL = 60
+
 
 def fq_table(table: str, schema: str | None = None) -> str:
     """Get fully-qualified table name with optional schema prefix."""
@@ -63,6 +66,7 @@ class WorkerPoller:
         tenant_extension: "TenantExtension | None" = None,
         max_slots: int = 10,
         consolidation_max_slots: int = 2,
+        stale_claim_timeout_minutes: int = 15,
     ):
         """
         Initialize the worker poller.
@@ -77,6 +81,8 @@ class WorkerPoller:
                             DefaultTenantExtension with the configured schema.
             max_slots: Maximum concurrent tasks per worker
             consolidation_max_slots: Maximum concurrent consolidation tasks per worker
+            stale_claim_timeout_minutes: Minutes after which processing tasks from other
+                workers are considered stale and reclaimed (0 to disable)
         """
         self._pool = pool
         self._worker_id = worker_id
@@ -93,6 +99,8 @@ class WorkerPoller:
         self._tenant_extension = tenant_extension
         self._max_slots = max_slots
         self._consolidation_max_slots = consolidation_max_slots
+        self._stale_claim_timeout_minutes = stale_claim_timeout_minutes
+        self._last_reclaim_check = 0.0
         self._shutdown = asyncio.Event()
         self._current_tasks: set[asyncio.Task] = set()
         self._in_flight_count = 0
@@ -523,6 +531,70 @@ class WorkerPoller:
             logger.info(f"Worker {self._worker_id} recovered {total_count} stale tasks from previous run")
         return total_count
 
+
+    async def reclaim_stale_tasks(self) -> int:
+        """
+        Reclaim tasks stuck in 'processing' from dead workers.
+
+        When a worker dies without graceful shutdown (e.g. container OOM-killed,
+        node failure), its claimed tasks remain in 'processing' indefinitely.
+        Because consolidation uses per-bank serialization, stale claims also
+        block new work on the affected banks.
+
+        This method periodically resets those tasks back to 'pending' when
+        claimed_at exceeds stale_claim_timeout_minutes.
+
+        Only reclaims tasks from OTHER workers — this worker's own in-flight
+        tasks may be legitimately long-running.
+
+        Returns:
+            Number of tasks reclaimed
+        """
+        if self._stale_claim_timeout_minutes <= 0:
+            return 0
+
+        schemas = await self._get_schemas()
+        total_reclaimed = 0
+
+        for schema in schemas:
+            try:
+                table = fq_table("async_operations", schema)
+                result = await self._pool.execute(
+                    f"""
+                    UPDATE {table}
+                    SET status = 'pending', worker_id = NULL, claimed_at = NULL,
+                        retry_count = retry_count + 1, updated_at = now()
+                    WHERE status = 'processing'
+                      AND claimed_at < NOW() - make_interval(mins => $1)
+                      AND worker_id IS DISTINCT FROM $2
+                    """,
+                    self._stale_claim_timeout_minutes,
+                    self._worker_id,
+                )
+                count = int(result.split()[-1]) if result else 0
+                total_reclaimed += count
+            except Exception as e:
+                schema_display = f'"{schema}"' if schema else str(schema)
+                logger.warning(
+                    f"Worker {self._worker_id} failed to reclaim stale tasks "
+                    f"for schema {schema_display}: {e}"
+                )
+
+        if total_reclaimed > 0:
+            logger.info(
+                f"Worker {self._worker_id} reclaimed {total_reclaimed} stale tasks "
+                f"(claimed_at > {self._stale_claim_timeout_minutes}m ago)"
+            )
+        return total_reclaimed
+
+    async def _reclaim_stale_if_due(self):
+        """Run stale-claim reclamation at most once per RECLAIM_CHECK_INTERVAL."""
+        now = time.time()
+        if now - self._last_reclaim_check < RECLAIM_CHECK_INTERVAL:
+            return
+        self._last_reclaim_check = now
+        await self.reclaim_stale_tasks()
+
     async def _recover_batch_operations(self, schema: str | None) -> int:
         """
         Recover batch API operations that were in-flight when worker crashed.
@@ -656,6 +728,9 @@ class WorkerPoller:
 
                 # Log progress stats periodically
                 await self._log_progress_if_due()
+
+                # Reclaim stale tasks from dead workers
+                await self._reclaim_stale_if_due()
 
             except asyncio.CancelledError:
                 logger.info(f"Worker {self._worker_id} polling loop cancelled")
