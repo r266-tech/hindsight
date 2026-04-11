@@ -531,7 +531,6 @@ class WorkerPoller:
             logger.info(f"Worker {self._worker_id} recovered {total_count} stale tasks from previous run")
         return total_count
 
-
     async def reclaim_stale_tasks(self) -> int:
         """
         Reclaim tasks stuck in 'processing' from dead workers.
@@ -576,8 +575,7 @@ class WorkerPoller:
             except Exception as e:
                 schema_display = f'"{schema}"' if schema else str(schema)
                 logger.warning(
-                    f"Worker {self._worker_id} failed to reclaim stale tasks "
-                    f"for schema {schema_display}: {e}"
+                    f"Worker {self._worker_id} failed to reclaim stale tasks for schema {schema_display}: {e}"
                 )
 
         if total_reclaimed > 0:
