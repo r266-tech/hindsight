@@ -190,12 +190,22 @@ class HindsightEmbedded:
         if self._closed:
             return
 
-        with self._lock:
+        acquired = self._lock.acquire(timeout=5.0)
+        if not acquired:
+            logger.warning(
+                "Cleanup lock acquisition timed out for profile '%s', "
+                "proceeding with best-effort cleanup",
+                self.profile,
+            )
+        try:
             if self._closed:
                 return
 
             if self._client is not None:
-                self._client.close()
+                try:
+                    self._client.close()
+                except Exception:
+                    pass
                 self._client = None
 
             # Stop UI if it was started
@@ -209,6 +219,9 @@ class HindsightEmbedded:
                 self._manager.stop(self.profile)
 
             self._closed = True
+        finally:
+            if acquired:
+                self._lock.release()
 
     def close(self, stop_daemon: bool = False):
         """
