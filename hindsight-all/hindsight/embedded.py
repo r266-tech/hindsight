@@ -192,11 +192,17 @@ class HindsightEmbedded:
 
         acquired = self._lock.acquire(timeout=5.0)
         if not acquired:
+            # Lock is held by another thread (e.g. _ensure_started).
+            # Mark closed to prevent new operations but skip shared-state
+            # teardown — the daemon's idle timeout handles the rest.
             logger.warning(
-                "Cleanup lock acquisition timed out for profile '%s', "
-                "proceeding with best-effort cleanup",
+                "Cleanup lock acquisition timed out for profile '%s'; "
+                "marking closed, daemon will idle-stop on its own",
                 self.profile,
             )
+            self._closed = True
+            return
+
         try:
             if self._closed:
                 return
@@ -205,7 +211,11 @@ class HindsightEmbedded:
                 try:
                     self._client.close()
                 except Exception:
-                    pass
+                    logger.debug(
+                        "Error closing client for profile '%s'",
+                        self.profile,
+                        exc_info=True,
+                    )
                 self._client = None
 
             # Stop UI if it was started
@@ -220,8 +230,7 @@ class HindsightEmbedded:
 
             self._closed = True
         finally:
-            if acquired:
-                self._lock.release()
+            self._lock.release()
 
     def close(self, stop_daemon: bool = False):
         """
