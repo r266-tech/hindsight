@@ -214,3 +214,32 @@ class TestHindsightClientSetBankMission:
         assert "my-bank" in captured["url"]
         assert captured["body"]["updates"]["reflect_mission"] == "I am Claude"
         assert captured["body"]["updates"]["retain_mission"] == "Extract facts"
+
+class TestHindsightClientUserAgent:
+    def test_user_agent_header_always_present(self):
+        c = HindsightClient("http://localhost:9077")
+        captured = {}
+
+        def fake_open(req, timeout=None):
+            captured["headers"] = dict(req.headers)
+            return FakeResp({"results": []})
+
+        with patch("urllib.request.urlopen", side_effect=fake_open):
+            c.recall("bank", "query")
+
+        assert "User-agent" in captured["headers"]
+        assert captured["headers"]["User-agent"].startswith("hindsight-claude-code/")
+
+    def test_user_agent_present_with_token(self):
+        c = HindsightClient("http://localhost:9077", api_token="secret")
+        captured = {}
+
+        def fake_open(req, timeout=None):
+            captured["headers"] = dict(req.headers)
+            return FakeResp({"results": []})
+
+        with patch("urllib.request.urlopen", side_effect=fake_open):
+            c.recall("bank", "query")
+
+        assert "User-agent" in captured["headers"]
+        assert "Authorization" in captured["headers"]
