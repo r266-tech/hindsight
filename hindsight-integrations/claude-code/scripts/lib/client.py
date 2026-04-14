@@ -33,7 +33,10 @@ class HindsightClient:
         self.api_token = api_token
 
     def _headers(self) -> dict:
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "hindsight-claude-code/1.0",
+        }
         if self.api_token:
             headers["Authorization"] = f"Bearer {self.api_token}"
         return headers
