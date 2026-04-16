@@ -7,7 +7,7 @@ breaking structured output (fact extraction, consolidation, etc.).
 """
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -40,20 +40,32 @@ def _mock_ollama_response(content: dict) -> httpx.Response:
     return httpx.Response(200, json=body)
 
 
+def _build_mock_client(captured_payloads: list[dict]) -> MagicMock:
+    """Build a mock httpx.AsyncClient that captures post payloads."""
+    mock_post = AsyncMock(side_effect=lambda url, **kw: (
+        captured_payloads.append(kw.get("json")),
+        _mock_ollama_response({"summary": "test"}),
+    )[-1])
+
+    mock_client = AsyncMock()
+    mock_client.post = mock_post
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    return mock_client
+
+
 @pytest.mark.asyncio
-async def test_ollama_native_payload_includes_think_false():
+@pytest.mark.parametrize("response_format", [_SampleOutput, None])
+async def test_ollama_native_payload_includes_think_false(response_format):
     """think=False must be in every _call_ollama_native payload (PR #1099)."""
     llm = _make_ollama_llm()
     captured_payloads: list[dict] = []
+    mock_client = _build_mock_client(captured_payloads)
 
-    async def _capture_post(url, *, json=None, **kw):
-        captured_payloads.append(json)
-        return _mock_ollama_response({"summary": "test"})
-
-    with patch("httpx.AsyncClient.post", new_callable=lambda: lambda: AsyncMock(side_effect=_capture_post)):
+    with patch("httpx.AsyncClient", return_value=mock_client):
         await llm._call_ollama_native(
             messages=[{"role": "user", "content": "hello"}],
-            response_format=_SampleOutput,
+            response_format=response_format,
             max_completion_tokens=None,
             temperature=None,
             max_retries=0,
@@ -69,16 +81,13 @@ async def test_ollama_native_payload_includes_think_false():
 
 
 @pytest.mark.asyncio
-async def test_ollama_native_think_false_coexists_with_schema():
-    """think=False must be present alongside the format (schema) parameter."""
+async def test_ollama_native_think_false_coexists_with_schema_and_options():
+    """think=False must coexist with format, num_predict, and temperature."""
     llm = _make_ollama_llm()
     captured_payloads: list[dict] = []
+    mock_client = _build_mock_client(captured_payloads)
 
-    async def _capture_post(url, *, json=None, **kw):
-        captured_payloads.append(json)
-        return _mock_ollama_response({"summary": "test"})
-
-    with patch("httpx.AsyncClient.post", new_callable=lambda: lambda: AsyncMock(side_effect=_capture_post)):
+    with patch("httpx.AsyncClient", return_value=mock_client):
         await llm._call_ollama_native(
             messages=[{"role": "user", "content": "extract facts"}],
             response_format=_SampleOutput,
@@ -90,6 +99,7 @@ async def test_ollama_native_think_false_coexists_with_schema():
             skip_validation=True,
         )
 
+    assert len(captured_payloads) == 1
     payload = captured_payloads[0]
     assert payload["think"] is False
     assert "format" in payload, "schema must be passed as 'format'"
