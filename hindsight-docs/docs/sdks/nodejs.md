@@ -110,6 +110,32 @@ const answer = await client.reflect('my-bank', 'What should I know about Alice?'
 console.log(answer.text);       // Generated response
 ```
 
+## Cancellation
+
+All `HindsightClient` methods accept an optional `AbortSignal` via `options.signal` to cancel in-flight requests. This is useful when an agent's per-call time budget for memory operations expires before the next LLM invocation:
+
+```typescript
+const controller = new AbortController();
+const timer = setTimeout(() => controller.abort(), 500);
+
+try {
+    const response = await client.recall('my-bank', 'What does Alice do?', {
+        signal: controller.signal,
+    });
+    console.log(response.results);
+} catch (err) {
+    if ((err as Error).name === 'AbortError') {
+        // Best-effort recall exceeded budget — proceed without memory
+    } else {
+        throw err;
+    }
+} finally {
+    clearTimeout(timer);
+}
+```
+
+Supported on `retain`, `retainBatch`, `retainFiles`, `recall`, `reflect`, `listMemories`, and bank/document operations.
+
 ## Bank Management
 
 ### Create Bank
