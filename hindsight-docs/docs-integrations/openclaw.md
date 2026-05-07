@@ -143,6 +143,33 @@ Optional settings in `~/.openclaw/openclaw.json`:
 - `retainOverlapTurns` - Extra prior turns included when chunked retention fires (default: `0`).
 - `debug` - Enable debug logging (default: `false`).
 
+### Plugin hooks
+
+Since OpenClaw 2026.4.24, non-bundled plugins must explicitly opt in to register typed conversation hooks (e.g. `agent_end`, used by retain). Without this opt-in the gateway blocks the hook and `retain` never fires — banks stay empty.
+
+The setup wizard sets this for you. If you edit `~/.openclaw/openclaw.json` by hand, add `hooks.allowConversationAccess: true` to the plugin entry:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "hindsight-openclaw": {
+        "enabled": true,
+        "hooks": {
+          "allowConversationAccess": true
+        },
+        "config": {
+          "...": "..."
+        }
+      }
+    }
+  }
+}
+```
+
+If retain isn't writing facts, check the gateway log — the diagnostic line is `typed hook "agent_end" blocked because non-bundled plugins must set ... allowConversationAccess=true`. Adding the field above (or re-running `hindsight-openclaw-setup` so the wizard backfills it) unblocks retain.
+
+
 ### Memory Isolation
 
 The plugin creates separate memory banks based on conversation context. By default, banks are derived from the `agent`, `channel`, and `user` fields — so each unique combination gets its own isolated memory store.
