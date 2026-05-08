@@ -169,6 +169,30 @@ The setup wizard sets this for you. If you edit `~/.openclaw/openclaw.json` by h
 
 If retain isn't writing facts, check the gateway log — the diagnostic line is `typed hook "agent_end" blocked because non-bundled plugins must set ... allowConversationAccess=true`. Adding the field above (or re-running `hindsight-openclaw-setup` so the wizard backfills it) unblocks retain.
 
+### Plugin allowlist
+
+Since OpenClaw 2026.2.19, the gateway logs a `WARN` at every startup when `plugins.allow` is empty and non-bundled plugins are auto-loaded:
+
+```
+[plugins] plugins.allow is empty; discovered non-bundled plugins may auto-load: hindsight-openclaw (...).
+          Set plugins.allow to explicit trusted ids.
+```
+
+The plugin still loads under the legacy empty-allowlist auto-discover behavior, but the warning fires on every gateway start until you set explicit trusted plugin ids. The setup wizard adds `hindsight-openclaw` to `plugins.allow` for you. If you edit `~/.openclaw/openclaw.json` by hand, add it to the allowlist:
+
+```json
+{
+  "plugins": {
+    "allow": ["hindsight-openclaw"],
+    "entries": {
+      "hindsight-openclaw": { "enabled": true }
+    }
+  }
+}
+```
+
+If you already curate `plugins.allow` for other plugins, append our id rather than replacing the list. When `plugins.allow` is an array, `hindsight-openclaw-setup` appends `hindsight-openclaw` if missing (idempotent) and leaves existing entries untouched. If `plugins.allow` is set to a non-array value, the wizard leaves it alone — normalize it to an array of plugin ids by hand.
+
 
 ### Memory Isolation
 
