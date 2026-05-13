@@ -123,9 +123,7 @@ export function createKnowledgeTools(opts: CreateKnowledgeToolsOptions): Knowled
           query: { detail: "content" },
         });
         if (resp.error) {
-          throw new Error(
-            `agent_knowledge_get_page failed: ${JSON.stringify(resp.error)}`,
-          );
+          throw new Error(`agent_knowledge_get_page failed: ${JSON.stringify(resp.error)}`);
         }
         return ok(resp.data);
       },
