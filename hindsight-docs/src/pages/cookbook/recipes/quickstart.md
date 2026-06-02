@@ -142,11 +142,10 @@ print(response)
 
 ## Memory Types
 
-Hindsight organizes memory into four networks to mimic human memory:
+Hindsight organizes memory into three networks to mimic human memory:
 
 - **World**: Facts about the world ("The stove gets hot")
 - **Experiences**: Agent's own experiences ("I touched the stove and it really hurt")
-- **Opinion**: Beliefs with confidence scores ("I shouldn't touch the stove again" - .99 confidence)
 - **Observation**: Complex mental models derived by reflecting on facts and experiences
 
 ## Cleanup
