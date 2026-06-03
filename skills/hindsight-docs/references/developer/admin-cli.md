@@ -146,6 +146,7 @@ hindsight-admin decommission-worker WORKER_ID [OPTIONS]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--schema`, `-s` | Database schema | `public` |
+| `--yes`, `-y` | Skip confirmation prompt | `false` |
 
 **Examples:**
 
