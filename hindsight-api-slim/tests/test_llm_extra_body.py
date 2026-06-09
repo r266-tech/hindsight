@@ -52,6 +52,29 @@ def test_extra_body_default_is_none():
         clear_config_cache()
 
 
+def test_bedrock_service_tier_parsed_from_env():
+    """The Bedrock service tier env var is parsed into ``HindsightConfig``."""
+    from hindsight_api.config import ENV_LLM_BEDROCK_SERVICE_TIER, HindsightConfig, clear_config_cache
+
+    with patch.dict(os.environ, {ENV_LLM_BEDROCK_SERVICE_TIER: "flex"}, clear=False):
+        clear_config_cache()
+        config = HindsightConfig.from_env()
+        assert config.llm_bedrock_service_tier == "flex"
+        clear_config_cache()
+
+
+def test_bedrock_service_tier_default_is_none():
+    """When the env var is unset, ``llm_bedrock_service_tier`` defaults to None."""
+    from hindsight_api.config import ENV_LLM_BEDROCK_SERVICE_TIER, HindsightConfig, clear_config_cache
+
+    env = {k: v for k, v in os.environ.items() if k != ENV_LLM_BEDROCK_SERVICE_TIER}
+    with patch.dict(os.environ, env, clear=True):
+        clear_config_cache()
+        config = HindsightConfig.from_env()
+        assert config.llm_bedrock_service_tier is None
+        clear_config_cache()
+
+
 # ─── Anthropic ────────────────────────────────────────────────────────────────
 
 
@@ -192,6 +215,20 @@ def _make_litellm_provider(extra_body=None):
     )
 
 
+def _make_bedrock_provider(service_tier=None, extra_body=None):
+    pytest.importorskip("litellm")
+    from hindsight_api.engine.providers.litellm_llm import LiteLLMLLM
+
+    return LiteLLMLLM(
+        provider="bedrock",
+        api_key="",
+        base_url="",
+        model="bedrock/us.amazon.nova-2-lite-v1:0",
+        service_tier=service_tier,
+        extra_body=extra_body,
+    )
+
+
 def _fake_litellm_response():
     msg = MagicMock()
     msg.content = "ok"
@@ -209,6 +246,11 @@ def test_litellm_stores_extra_body():
     assert provider._extra_body == EXTRA_BODY
 
 
+def test_bedrock_stores_service_tier():
+    provider = _make_bedrock_provider(service_tier="flex")
+    assert provider.service_tier == "flex"
+
+
 @pytest.mark.asyncio
 async def test_litellm_call_merges_extra_body_as_top_level_kwargs():
     """``call()`` merges extra_body into the acompletion kwargs."""
@@ -224,6 +266,18 @@ async def test_litellm_call_merges_extra_body_as_top_level_kwargs():
 
 
 @pytest.mark.asyncio
+async def test_bedrock_call_passes_service_tier_as_top_level_kwarg():
+    """Bedrock's configured service tier is passed through to LiteLLM."""
+    provider = _make_bedrock_provider(service_tier="flex")
+    provider._acompletion = AsyncMock(return_value=_fake_litellm_response())
+
+    with patch("hindsight_api.engine.providers.litellm_llm.get_metrics_collector"):
+        await provider.call(messages=[{"role": "user", "content": "hi"}], scope="test", max_retries=0)
+
+    assert provider._acompletion.call_args.kwargs.get("service_tier") == "flex"
+
+
+@pytest.mark.asyncio
 async def test_litellm_explicit_param_wins_over_extra_body():
     """``setdefault`` semantics: an explicit per-call value is not overwritten."""
     provider = _make_litellm_provider(extra_body={"temperature": 0.2})
@@ -233,6 +287,28 @@ async def test_litellm_explicit_param_wins_over_extra_body():
         await provider.call(messages=[{"role": "user", "content": "hi"}], temperature=0.9, scope="test", max_retries=0)
 
     assert provider._acompletion.call_args.kwargs.get("temperature") == 0.9
+
+
+def test_bedrock_factory_forwards_service_tier_to_litellm_impl():
+    """The Bedrock factory alias threads ``bedrock_service_tier`` into LiteLLMLLM."""
+    from hindsight_api.engine.llm_wrapper import create_llm_provider
+
+    with patch(
+        "hindsight_api.engine.providers.litellm_llm.LiteLLMLLM.__init__",
+        return_value=None,
+    ) as mock_init:
+        create_llm_provider(
+            provider="bedrock",
+            api_key="",
+            base_url="",
+            model="us.amazon.nova-2-lite-v1:0",
+            reasoning_effort="low",
+            bedrock_service_tier="flex",
+        )
+
+    _, kwargs = mock_init.call_args
+    assert kwargs["model"] == "bedrock/us.amazon.nova-2-lite-v1:0"
+    assert kwargs["service_tier"] == "flex"
 
 
 def test_litellm_router_forwards_extra_body():
