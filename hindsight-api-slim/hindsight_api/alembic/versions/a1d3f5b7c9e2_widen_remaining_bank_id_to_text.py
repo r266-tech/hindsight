@@ -6,11 +6,17 @@ narrow ``VARCHAR(64)`` declaration bricked startup. The same VARCHAR(64) / TEXT
 inconsistency still affects the live tables that store a user-supplied
 ``bank_id``:
 
-* ``directives``            -- created VARCHAR(64) in ``p1k2l3m4n5o6``
-* ``mental_models``         -- VARCHAR(64) (origin ``pinned_reflections`` in
-                               ``n9i0j1k2l3m4``; recreated in ``h3c4d5e6f7g8``)
-* ``mental_model_versions`` -- created VARCHAR(64) in ``o0j1k2l3m4n5`` /
-                               ``j5e6f7g8h9i0``
+* ``directives``    -- created VARCHAR(64) in ``p1k2l3m4n5o6``
+* ``mental_models`` -- VARCHAR(64) (origin ``pinned_reflections`` in
+                       ``n9i0j1k2l3m4``; recreated in ``h3c4d5e6f7g8``)
+
+``mental_model_versions`` is intentionally *not* widened here: it is created in
+``j5e6f7g8h9i0`` but dropped (``DROP TABLE ... CASCADE``) in ``o0j1k2l3m4n5`` and
+never recreated on the upgrade path, so it does not exist at head. Issuing
+``ALTER TABLE mental_model_versions ...`` would raise ``UndefinedTable`` and --
+because migrations run inside the lifespan-startup transaction -- roll the whole
+migration back, bricking the API. (It is unrelated to the live
+``mental_model_history`` table widened by ``c3e5a7b9d1f4``.)
 
 ``banks.bank_id`` is ``TEXT`` (unbounded), so a deployment can create a bank
 whose id exceeds 64 chars -- the 78-char hierarchical org-unit shape reported in
@@ -62,7 +68,6 @@ def _pg_upgrade() -> None:
     schema = _get_schema_prefix()
     op.execute(f"ALTER TABLE {schema}directives ALTER COLUMN bank_id TYPE TEXT")
     op.execute(f"ALTER TABLE {schema}mental_models ALTER COLUMN bank_id TYPE TEXT")
-    op.execute(f"ALTER TABLE {schema}mental_model_versions ALTER COLUMN bank_id TYPE TEXT")
 
 
 def _pg_downgrade() -> None:
