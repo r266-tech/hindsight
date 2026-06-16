@@ -1225,14 +1225,17 @@ function BankSelectorInner() {
                               <SelectItem value="all_combinations">
                                 {tAddDocument("observationScopeAllCombinations")}
                               </SelectItem>
-                              <SelectItem value="shared">Shared</SelectItem>
-                              <SelectItem value="custom">Custom</SelectItem>
+                              <SelectItem value="shared">
+                                {tAddDocument("observationScopeShared")}
+                              </SelectItem>
+                              <SelectItem value="custom">
+                                {tAddDocument("observationScopeCustom")}
+                              </SelectItem>
                             </SelectContent>
                           </Select>
                           {docObservationScopes === "shared" && (
                             <p className="text-xs text-muted-foreground mt-1.5 italic">
-                              All observations are stored in one shared, untagged
-                              scope (tags are ignored).
+                              {tAddDocument("observationScopeSharedHelp")}
                             </p>
                           )}
                           {docObservationScopes !== "custom" &&
