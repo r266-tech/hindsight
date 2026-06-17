@@ -205,8 +205,6 @@ async def test_gemini_extra_body_service_tier_takes_precedence():
     assert provider._extra_body["http_options"]["extra_body"]["service_tier"] == "standard"
 
 
-
-
 # ─── LiteLLM ──────────────────────────────────────────────────────────────────
 
 
