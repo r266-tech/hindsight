@@ -322,3 +322,60 @@ def test_plain_text_lines_not_treated_as_jsonl():
     # Sanity: these are not JSON objects (so the JSONL path correctly declined).
     with pytest.raises(json.JSONDecodeError):
         json.loads(chunks[0])
+
+
+# ---------------------------------------------------------------------------
+# Re-chunk stability (idempotence)
+# ---------------------------------------------------------------------------
+# Extraction re-runs ``chunk_text`` on every pre-chunk, so each emitted chunk
+# must be a fixed point. When the structured-chunk cap is raised above
+# ``max_chars``, a pre-chunk that re-chunks into several pieces makes them all
+# collapse onto one chunk_index and crashes the retain upsert with duplicate
+# chunk_ids (CardinalityViolationError, #2301).
+
+
+def _assert_rechunk_stable(chunks, max_chars, structured_chunk_size):
+    """Every produced chunk must re-chunk to exactly itself (a fixed point)."""
+    for chunk in chunks:
+        assert chunk_text(
+            chunk, max_chars=max_chars, structured_chunk_size=structured_chunk_size
+        ) == [chunk], f"chunk re-splits on the extractor's second pass: {chunk[:60]!r}..."
+
+
+def test_chunk_conversation_oversized_turn_is_rechunk_stable():
+    """A turn larger than the structured cap is split to max_chars (not the cap),
+    so the extractor's re-chunk pass is a no-op (#2301)."""
+    text = json.dumps([{"role": "assistant", "content": "x" * 6000}])
+
+    chunks = chunk_text(text, max_chars=3000, structured_chunk_size=5000)
+
+    for chunk in chunks:
+        assert len(chunk) <= 3000
+    _assert_rechunk_stable(chunks, max_chars=3000, structured_chunk_size=5000)
+
+
+def test_chunk_jsonl_kept_whole_line_is_rechunk_stable():
+    """A JSONL line kept whole (between max_chars and the structured cap) must
+    survive the extractor's re-chunk pass unchanged (#2301)."""
+    big_line = json.dumps({"event": "x" * 3800})  # > max_chars 3000, <= cap 5000
+    small_line = json.dumps({"event": "ok"})
+    text = "\n".join([big_line, small_line])
+
+    chunks = chunk_text(text, max_chars=3000, structured_chunk_size=5000)
+
+    assert big_line in chunks  # kept whole as its own pre-chunk
+    _assert_rechunk_stable(chunks, max_chars=3000, structured_chunk_size=5000)
+
+
+def test_chunk_jsonl_oversized_line_is_rechunk_stable():
+    """A JSONL line past the structured cap is split to max_chars so every
+    fragment is a fixed point (#2301)."""
+    huge_line = json.dumps({"event": "z" * 8000})  # > cap 5000
+    small_line = json.dumps({"event": "ok"})
+    text = "\n".join([huge_line, small_line])
+
+    chunks = chunk_text(text, max_chars=3000, structured_chunk_size=5000)
+
+    for chunk in chunks:
+        assert len(chunk) <= 3000
+    _assert_rechunk_stable(chunks, max_chars=3000, structured_chunk_size=5000)

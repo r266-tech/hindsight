@@ -473,6 +473,15 @@ def chunk_text(text: str, max_chars: int, structured_chunk_size: int | None = No
         if isinstance(parsed, list) and all(isinstance(turn, dict) for turn in parsed):
             # This looks like a conversation - chunk at turn boundaries
             return _chunk_conversation(parsed, max_chars, structured_limit)
+        if isinstance(parsed, dict) and len(text) <= structured_limit:
+            # A lone structured unit (a single JSON object) is kept whole up to the
+            # structured-chunk cap, mirroring how a single JSONL line or conversation
+            # turn is kept whole. Keeping it whole here makes chunk_text a fixed point:
+            # extraction re-runs chunk_text on every pre-chunk, so a kept-whole line
+            # re-chunked on its own must come back unchanged. Otherwise it expands into
+            # several sub-chunks that all collapse onto one chunk_index and crash the
+            # ON CONFLICT upsert with duplicate chunk_ids (#2301).
+            return [text]
     except (json.JSONDecodeError, ValueError):
         pass
 
@@ -519,7 +528,7 @@ def _chunk_conversation(turns: list[dict], max_chars: int, structured_limit: int
         # text so no chunk runs far over budget (the extractor won't re-chunk).
         if turn_unit_size > structured_limit:
             _flush()
-            chunks.extend(_split_oversized_unit(turn_json, structured_limit))
+            chunks.extend(_split_oversized_unit(turn_json, min(structured_limit, max_chars)))
             continue
 
         # If adding this turn would exceed limit and we have turns, save current chunk
@@ -585,7 +594,7 @@ def _chunk_jsonl(text: str, max_chars: int, structured_limit: int) -> list[str] 
         # text so no chunk runs far over budget (the extractor won't re-chunk).
         if line_unit_size > structured_limit:
             _flush()
-            chunks.extend(_split_oversized_unit(line, structured_limit))
+            chunks.extend(_split_oversized_unit(line, min(structured_limit, max_chars)))
             continue
 
         # If adding this line would exceed the limit and we have lines, flush.
