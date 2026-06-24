@@ -196,9 +196,7 @@ def _usage(*, cached=0, reasoning=0, prompt=1500, completion=500, total=2000):
         completion_tokens=completion,
         total_tokens=total,
         prompt_tokens_details=SimpleNamespace(cached_tokens=cached) if cached is not None else None,
-        completion_tokens_details=SimpleNamespace(reasoning_tokens=reasoning)
-        if reasoning is not None
-        else None,
+        completion_tokens_details=SimpleNamespace(reasoning_tokens=reasoning) if reasoning is not None else None,
     )
 
 
@@ -213,9 +211,7 @@ def _response(*, usage, content='{"ok": true}', tool_calls=None):
 @pytest.mark.asyncio
 async def test_openai_compatible_call_extracts_reasoning_into_thoughts_tokens():
     llm = _openai_llm()
-    llm._client.chat.completions.create = AsyncMock(
-        return_value=_response(usage=_usage(cached=200, reasoning=80))
-    )
+    llm._client.chat.completions.create = AsyncMock(return_value=_response(usage=_usage(cached=200, reasoning=80)))
     with patch("hindsight_api.engine.providers.openai_compatible_llm.get_metrics_collector"):
         _, token_usage = await llm.call(
             messages=[{"role": "user", "content": "Return whether this worked."}],
@@ -226,6 +222,10 @@ async def test_openai_compatible_call_extracts_reasoning_into_thoughts_tokens():
     # reasoning_tokens must flow into thoughts_tokens (was dropped -> 0 before).
     assert token_usage.thoughts_tokens == 80
     assert token_usage.cached_tokens == 200
+    # OpenAI folds reasoning into completion_tokens; output_tokens/total_tokens
+    # must stay visible-only so they don't double-count thoughts_tokens.
+    assert token_usage.output_tokens == 500 - 80
+    assert token_usage.total_tokens == 2000 - 80
 
 
 @pytest.mark.asyncio
@@ -243,6 +243,8 @@ async def test_openai_compatible_call_with_tools_extracts_reasoning_and_cached()
     # call_with_tools previously set neither field -> both defaulted to 0.
     assert result.thoughts_tokens == 33
     assert result.cached_tokens == 64
+    # output_tokens is visible-only (completion_tokens minus reasoning).
+    assert result.output_tokens == 500 - 33
 
 
 @pytest.mark.asyncio
@@ -262,3 +264,32 @@ async def test_openai_compatible_call_no_token_details_keeps_thoughts_zero():
         )
     assert token_usage.thoughts_tokens == 0
     assert token_usage.cached_tokens == 0
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_output_tokens_exclude_thoughts_like_gemini():
+    """Convention invariant: for an OpenAI-compatible reasoning model, the
+    provider's ``completion_tokens`` already INCLUDES ``reasoning_tokens`` (real
+    o4-mini sample: completion_tokens=83, reasoning_tokens=64). The TokenUsage
+    contract — matching the Gemini provider — treats ``output_tokens`` as
+    visible-only and surfaces reasoning separately in ``thoughts_tokens``, with
+    ``total_tokens == input_tokens + output_tokens``. Pin that the two fields do
+    not double-count: visible = completion - reasoning, and the three token
+    counts reconcile."""
+    llm = _openai_llm()
+    llm._client.chat.completions.create = AsyncMock(
+        return_value=_response(usage=_usage(reasoning=64, prompt=20, completion=83, total=103))
+    )
+    with patch("hindsight_api.engine.providers.openai_compatible_llm.get_metrics_collector"):
+        _, token_usage = await llm.call(
+            messages=[{"role": "user", "content": "17*23?"}],
+            response_format=_OkModel,
+            max_retries=0,
+            return_usage=True,
+        )
+    assert token_usage.thoughts_tokens == 64
+    assert token_usage.output_tokens == 83 - 64  # visible-only, no reasoning
+    assert token_usage.input_tokens == 20
+    assert token_usage.total_tokens == token_usage.input_tokens + token_usage.output_tokens
+    # The reasoning tokens live in exactly one field, not both.
+    assert token_usage.output_tokens + token_usage.thoughts_tokens == 83
