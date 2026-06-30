@@ -482,18 +482,46 @@ def test_litellm_default_headers_copied_from_caller_dict():
     assert "X-Mutated" not in provider._default_headers
 
 
-def test_litellm_router_forwards_default_headers():
-    """The Router subclass forwards default_headers through to the shared LiteLLM base."""
+def _make_litellm_router_provider(default_headers=None):
     pytest.importorskip("litellm")
     from hindsight_api.engine.providers.litellm_router_llm import LiteLLMRouterLLM
 
-    config = {"model_list": [{"model_name": "m", "litellm_params": {"model": "gpt-4o", "api_key": "x"}}]}
-    provider = LiteLLMRouterLLM(
+    config = {"model_list": [{"model_name": "default", "litellm_params": {"model": "gpt-4o", "api_key": "x"}}]}
+    return LiteLLMRouterLLM(
         provider="litellmrouter",
         api_key="",
         base_url="",
-        model="m",
+        model="default",
         config=config,
-        default_headers=DEFAULT_HEADERS,
+        default_headers=default_headers,
     )
+
+
+def test_litellm_router_stores_default_headers():
+    provider = _make_litellm_router_provider(default_headers=DEFAULT_HEADERS)
     assert provider._default_headers == DEFAULT_HEADERS
+
+
+@pytest.mark.asyncio
+async def test_litellm_router_call_passes_default_headers_as_extra_headers():
+    """The Router's ``_build_common_kwargs`` override must also forward default_headers
+    as ``extra_headers`` — storage alone doesn't reach the provider behind the Router."""
+    provider = _make_litellm_router_provider(default_headers=DEFAULT_HEADERS)
+    provider._acompletion = AsyncMock(return_value=_fake_litellm_response())
+
+    with patch("hindsight_api.engine.providers.litellm_llm.get_metrics_collector"):
+        await provider.call(messages=[{"role": "user", "content": "hi"}], scope="test", max_retries=0)
+
+    assert provider._acompletion.call_args.kwargs.get("extra_headers") == DEFAULT_HEADERS
+
+
+@pytest.mark.asyncio
+async def test_litellm_router_no_default_headers_omits_extra_headers():
+    """The Router omits ``extra_headers`` entirely when none are configured."""
+    provider = _make_litellm_router_provider(default_headers=None)
+    provider._acompletion = AsyncMock(return_value=_fake_litellm_response())
+
+    with patch("hindsight_api.engine.providers.litellm_llm.get_metrics_collector"):
+        await provider.call(messages=[{"role": "user", "content": "hi"}], scope="test", max_retries=0)
+
+    assert "extra_headers" not in provider._acompletion.call_args.kwargs
