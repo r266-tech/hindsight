@@ -419,6 +419,29 @@ async def test_postgresql_fused_query_is_one_statement():
 
 
 @pytest.mark.asyncio
+async def test_postgresql_scoring_join_excludes_nested_loop_plan():
+    """The scored join stays hash/merge-capable when source estimates collapse (#4163)."""
+    conn = AsyncMock()
+    conn.fetch.return_value = []
+
+    await PostgreSQLOps().expand_observations(
+        conn,
+        "memory_units",
+        "unit_entities",
+        "memory_links",
+        [uuid.uuid4()],
+        100,
+        200,
+        UpdatedWindow(after=None, before=None, first_param_index=3),
+    )
+
+    normalized_sql = " ".join(conn.fetch.await_args.args[0].split())
+    assert "scored AS MATERIALIZED" in normalized_sql
+    assert "FULL OUTER JOIN connected_sources cs ON cs.source_id = s.source_id" in normalized_sql
+    assert "GROUP BY c.id" in normalized_sql
+
+
+@pytest.mark.asyncio
 async def test_oracle_fused_query_is_one_statement():
     """Structural (no Oracle runtime): Oracle emits ONE statement, three arms.
 

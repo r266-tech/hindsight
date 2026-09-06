@@ -936,6 +936,14 @@ class PostgreSQLOps(DataAccessOps):
         # grow hubs far past that, re-measure before assuming this is still the
         # right shape.
         #
+        # Even with that traceable column, bank-wide unit_id statistics can still
+        # collapse the connected_sources estimate to one row (#4163). An inner
+        # join may then become a nested loop over every candidate/source pair.
+        # Keep scored materialized and use a FULL JOIN: PostgreSQL cannot execute
+        # an equality FULL JOIN as a nested loop, so it must hash or merge even
+        # when the estimate is wrong. Unmatched rows form a single NULL-id group
+        # which the following inner join to candidates naturally discards.
+        #
         # Entity/source traversal and semantic/causal expansion run as ONE query
         # (#3857): the observation entity arm is fused into the semantic/causal CTE
         # query behind an 'entity' source discriminator, like the non-observation
@@ -987,11 +995,11 @@ class PostgreSQLOps(DataAccessOps):
                   AND mu.source_memory_ids && ca.source_ids
                   {window.clause("mu")}
             ),
-            scored AS (
+            scored AS MATERIALIZED (
                 SELECT c.id, COUNT(DISTINCT cs.source_id)::float AS score
                 FROM candidates c
                 CROSS JOIN LATERAL unnest(c.source_memory_ids) AS s(source_id)
-                JOIN connected_sources cs ON cs.source_id = s.source_id
+                FULL OUTER JOIN connected_sources cs ON cs.source_id = s.source_id
                 GROUP BY c.id
             ),
             observation_entity_expanded AS (
