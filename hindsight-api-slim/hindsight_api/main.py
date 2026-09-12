@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import atexit
 import dataclasses
+import errno
 import logging
 import os
 import signal
@@ -288,6 +289,8 @@ def main():
         logging.error("Cannot bind %s:%s: %s", args.host, args.port, exc)
         raise SystemExit(1) from exc
     try:
+        args.port = sockets[0].getsockname()[1]
+        config = dataclasses.replace(config, port=args.port)
         _serve(args, config, is_daemon, sockets)
     finally:
         for sock in sockets:
@@ -296,6 +299,25 @@ def main():
 
 async def _bind_sockets(host: str, port: int) -> list[socket.socket]:
     """Use asyncio's hostname/IPv4/IPv6 resolution without accepting any connections."""
+    if port == 0:
+        # asyncio allocates a separate ephemeral port per resolved address. Select
+        # one candidate, then reserve it across all addresses before initialization.
+        # Retry a bounded number of times if another listener wins that candidate.
+        for attempt in range(5):
+            probe = await asyncio.get_running_loop().create_server(
+                asyncio.Protocol, host=host, port=0, start_serving=False
+            )
+            try:
+                selected_port = probe.sockets[0].getsockname()[1]
+            finally:
+                probe.close()
+                await probe.wait_closed()
+            try:
+                return await _bind_sockets(host, selected_port)
+            except OSError as exc:
+                if exc.errno != errno.EADDRINUSE or attempt == 4:
+                    raise
+
     server = await asyncio.get_running_loop().create_server(asyncio.Protocol, host=host, port=port, start_serving=False)
     sockets = []
     try:

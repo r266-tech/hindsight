@@ -16,6 +16,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from hindsight_api.config import HindsightConfig
+
 
 class TestMainModuleExtensionLoading:
     """Tests that main.py correctly loads extensions when configured via environment."""
@@ -55,11 +57,10 @@ class TestMainModuleExtensionLoading:
             patch("hindsight_api.main.print_banner"),
             patch("hindsight_api.main._run_uvicorn"),
         ):  # Don't actually start uvicorn
-            mock_config = MagicMock()
+            mock_config = HindsightConfig.from_env()
             mock_config.host = "0.0.0.0"
             mock_config.port = 0
             mock_config.log_level = "info"
-            # argparse defaults: a MagicMock would compare against ints later on.
             mock_config.workers = 1
             mock_config.access_log = False
             mock_config.mcp_enabled = False
@@ -114,11 +115,10 @@ class TestMainModuleExtensionLoading:
             patch("hindsight_api.main.print_banner"),
             patch("hindsight_api.main._run_uvicorn"),
         ):
-            mock_config = MagicMock()
+            mock_config = HindsightConfig.from_env()
             mock_config.host = "0.0.0.0"
             mock_config.port = 0
             mock_config.log_level = "info"
-            # argparse defaults: a MagicMock would compare against ints later on.
             mock_config.workers = 1
             mock_config.access_log = False
             mock_config.mcp_enabled = False
@@ -166,11 +166,10 @@ class TestMainModuleExtensionLoading:
             patch("hindsight_api.main.print_banner"),
             patch("hindsight_api.main._run_uvicorn"),
         ):
-            mock_config = MagicMock()
+            mock_config = HindsightConfig.from_env()
             mock_config.host = "0.0.0.0"
             mock_config.port = 0
             mock_config.log_level = "info"
-            # argparse defaults: a MagicMock would compare against ints later on.
             mock_config.workers = 1
             mock_config.access_log = False
             mock_config.mcp_enabled = False
@@ -228,11 +227,10 @@ class TestMainModuleExtensionLoading:
             patch("hindsight_api.main.print_banner"),
             patch("hindsight_api.main._run_uvicorn"),
         ):
-            mock_config = MagicMock()
+            mock_config = HindsightConfig.from_env()
             mock_config.host = "0.0.0.0"
             mock_config.port = 0
             mock_config.log_level = "info"
-            # argparse defaults: a MagicMock would compare against ints later on.
             mock_config.workers = 1
             mock_config.access_log = False
             mock_config.mcp_enabled = False
@@ -273,11 +271,10 @@ class TestMainModuleExtensionLoading:
             patch("hindsight_api.main.print_banner"),
             patch("hindsight_api.main._run_uvicorn"),
         ):
-            mock_config = MagicMock()
+            mock_config = HindsightConfig.from_env()
             mock_config.host = "0.0.0.0"
             mock_config.port = 0
             mock_config.log_level = "info"
-            # argparse defaults: a MagicMock would compare against ints later on.
             mock_config.workers = 1
             mock_config.access_log = False
             mock_config.mcp_enabled = False
@@ -323,11 +320,10 @@ class TestMainModuleExtensionLoading:
             patch("hindsight_api.main.print_banner"),
             patch("hindsight_api.main._run_uvicorn", side_effect=capture_uvicorn_run),
         ):
-            mock_config = MagicMock()
+            mock_config = HindsightConfig.from_env()
             mock_config.host = "0.0.0.0"
             mock_config.port = 0
             mock_config.log_level = "info"
-            # argparse defaults: a MagicMock would compare against ints later on.
             mock_config.workers = 1
             mock_config.access_log = False
             mock_config.mcp_enabled = False
@@ -367,11 +363,10 @@ class TestMainModuleExtensionLoading:
             patch("hindsight_api.main.print_banner"),
             patch("hindsight_api.main._run_uvicorn", side_effect=capture_uvicorn_run),
         ):
-            mock_config = MagicMock()
+            mock_config = HindsightConfig.from_env()
             mock_config.host = "0.0.0.0"
             mock_config.port = 0
             mock_config.log_level = "info"
-            # argparse defaults: a MagicMock would compare against ints later on.
             mock_config.workers = 1
             mock_config.access_log = False
             mock_config.mcp_enabled = False
@@ -414,11 +409,10 @@ class TestMainModuleExtensionLoading:
             patch("hindsight_api.main.print_banner"),
             patch("hindsight_api.main._run_uvicorn", side_effect=capture_uvicorn_run),
         ):
-            mock_config = MagicMock()
+            mock_config = HindsightConfig.from_env()
             mock_config.host = "0.0.0.0"
             mock_config.port = 0
             mock_config.log_level = "info"
-            # argparse defaults: a MagicMock would compare against ints later on.
             mock_config.workers = 1
             mock_config.access_log = False
             mock_config.mcp_enabled = False
@@ -534,6 +528,7 @@ def test_prebound_sockets_reserve_addresses_until_closed(host):
     addresses = [(sock.family, sock.getsockname()) for sock in sockets]
     try:
         assert addresses
+        assert len({address[1] for _, address in addresses}) == 1
         for family, address in addresses:
             assert address[1] > 0
             with socket.socket(family) as contender:
@@ -551,6 +546,58 @@ def test_prebound_sockets_reserve_addresses_until_closed(host):
             retry.listen()
 
 
+@pytest.mark.parametrize("conflicts", [1, 5])
+def test_ephemeral_port_retries_conflicts_without_leaking_sockets(monkeypatch, conflicts):
+    import asyncio
+    import errno
+
+    from hindsight_api.main import _bind_sockets
+
+    probes = []
+    blockers = []
+    reserved = []
+    attempts = 0
+
+    async def exercise():
+        nonlocal attempts
+        loop = asyncio.get_running_loop()
+        create_server = loop.create_server
+
+        async def race(*args, **kwargs):
+            nonlocal attempts
+            if kwargs["port"]:
+                attempts += 1
+                if attempts <= conflicts:
+                    # Occupy the selected port after the probe closes, just as a
+                    # competing process could. The actual asyncio bind must fail.
+                    blockers.append(socket.create_server(("127.0.0.1", kwargs["port"])))
+            server = await create_server(*args, **kwargs)
+            if kwargs["port"] == 0:
+                probes.extend(server.sockets)
+            return server
+
+        monkeypatch.setattr(loop, "create_server", race)
+        if conflicts == 5:
+            with pytest.raises(OSError) as exc:
+                await _bind_sockets("localhost", 0)
+            assert exc.value.errno == errno.EADDRINUSE
+        else:
+            reserved.extend(await _bind_sockets("localhost", 0))
+            assert len({sock.getsockname()[1] for sock in reserved}) == 1
+
+    try:
+        asyncio.run(exercise())
+        assert attempts == min(conflicts + 1, 5)
+        assert probes and all(sock.fileno() == -1 for sock in probes)
+        for blocker in blockers:
+            with socket.create_connection(blocker.getsockname(), timeout=1):
+                connection, _ = blocker.accept()
+                connection.close()
+    finally:
+        for sock in reserved + blockers:
+            sock.close()
+
+
 def test_main_closes_sockets_when_initialization_fails(monkeypatch):
     import hindsight_api.main as entrypoint
     from hindsight_api.config import HindsightConfig
@@ -562,6 +609,7 @@ def test_main_closes_sockets_when_initialization_fails(monkeypatch):
 
     def fail(args, config, is_daemon, sockets):
         held.extend(sockets)
+        assert config.port == args.port == sockets[0].getsockname()[1] > 0
         raise RuntimeError("engine initialization failed")
 
     monkeypatch.setattr(entrypoint, "_serve", fail)
