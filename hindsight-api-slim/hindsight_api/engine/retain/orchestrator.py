@@ -74,8 +74,7 @@ async def _persist_operation_document_id(conn: Any, table: str, operation_id: st
                 document_ids.append(document_id)
             metadata["document_ids"] = document_ids
             await conn.execute(
-                f"UPDATE {table} SET result_metadata = $1, updated_at = CURRENT_TIMESTAMP "
-                "WHERE operation_id = $2",
+                f"UPDATE {table} SET result_metadata = $1, updated_at = CURRENT_TIMESTAMP WHERE operation_id = $2",
                 json.dumps(metadata),
                 operation_uuid,
             )
@@ -1618,9 +1617,7 @@ async def retain_batch(
     if operation_id:
         try:
             async with acquire_with_retry(pool) as conn:
-                await _persist_operation_document_id(
-                    conn, fq_table("async_operations"), operation_id, effective_doc_id
-                )
+                await _persist_operation_document_id(conn, fq_table("async_operations"), operation_id, effective_doc_id)
         except Exception:
             logger.warning("Failed to persist document_id", exc_info=True)
 
