@@ -4,7 +4,8 @@ import uuid
 
 import pytest
 
-from hindsight_api.engine.storage import bank_storage_prefix
+from hindsight_api.engine.retain.bank_utils import BANK_ID_MAX_BYTES
+from hindsight_api.engine.storage import bank_storage_prefix, key_segment
 
 
 @pytest.mark.parametrize("bank_id", [".", "..", "a/b", "a%2Fb", "user.name", "ü b"])
@@ -27,6 +28,19 @@ def test_distinct_bank_ids_never_share_a_prefix():
 def test_an_empty_bank_id_is_refused():
     with pytest.raises(ValueError):
         bank_storage_prefix("")
+
+
+def test_maximum_bank_id_stays_within_object_store_key_budget():
+    """The creation limit also leaves room for the encoded storage-key suffix."""
+    bank_id = "界" * (BANK_ID_MAX_BYTES // len("界".encode()))
+    prefix = bank_storage_prefix(bank_id, schema="tenant")
+    object_key = f"{prefix}files/{uuid.uuid4()}/original-name.txt"
+
+    # S3-compatible stores cap object keys at 1,024 UTF-8 bytes.  The bank-id
+    # limit is deliberately expressed before percent encoding, so this test
+    # protects the end-to-end invariant when key_segment or the suffix grows.
+    assert len(object_key.encode("utf-8")) < 1024
+    assert len(key_segment(bank_id).encode("ascii")) == (BANK_ID_MAX_BYTES // 3) * 9
 
 
 @pytest.mark.asyncio
