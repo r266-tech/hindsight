@@ -3,10 +3,29 @@ Cross-encoder neural reranking for search results.
 """
 
 import calendar
+import logging
 import math
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from ..cross_encoder import _served_provider
 from .types import MergedCandidate, ScoredResult
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RerankResult:
+    """Scores from one rerank call, plus the provider that actually produced them.
+
+    ``provider_name`` is copied out before ``rerank`` returns. On a failover
+    chain it is the member that served this call, not a later read of the
+    chain's shared active member.
+    """
+
+    results: list[ScoredResult]
+    provider_name: str | None
+
 
 UTC = timezone.utc
 
@@ -342,7 +361,7 @@ class CrossEncoderReranker:
             ) from e
         self._initialized = True
 
-    async def rerank(self, query: str, candidates: list[MergedCandidate]) -> list[ScoredResult]:
+    async def rerank(self, query: str, candidates: list[MergedCandidate]) -> RerankResult:
         """
         Rerank candidates using cross-encoder scores.
 
@@ -351,10 +370,14 @@ class CrossEncoderReranker:
             candidates: Merged candidates from RRF
 
         Returns:
-            List of ScoredResult objects sorted by cross-encoder score
+            Scored results sorted by cross-encoder score, and the provider that
+            produced those scores for this call.
         """
         if not candidates:
-            return []
+            return RerankResult(
+                results=[],
+                provider_name=getattr(self.cross_encoder, "provider_name", None),
+            )
 
         # Prepare query-document pairs with date information
         pairs = []
@@ -382,8 +405,18 @@ class CrossEncoderReranker:
 
             pairs.append([query, doc_text])
 
-        # Get cross-encoder scores
-        scores = await self.cross_encoder.predict(pairs)
+        # Get cross-encoder scores. A failover chain records the member that
+        # served this task; read it before anything else on the chain can move.
+        token = _served_provider.set(None)
+        try:
+            scores = await self.cross_encoder.predict(pairs)
+            served_provider = _served_provider.get()
+        finally:
+            _served_provider.reset(token)
+        if served_provider is None:
+            # Single-member encoders do not record one. Their provider_name is
+            # fixed for the instance, so it is not the shared failover cursor.
+            served_provider = getattr(self.cross_encoder, "provider_name", None)
 
         # Normalize scores to [0, 1] range.
         # External API rerankers (Cohere, Jina, llama.cpp/Qwen, etc.) return
@@ -428,4 +461,15 @@ class CrossEncoderReranker:
         # Sort by cross-encoder score
         scored_results.sort(key=lambda x: x.weight, reverse=True)
 
-        return scored_results
+        if not self.cross_encoder.prunes_candidates:
+            return RerankResult(results=scored_results, provider_name=served_provider)
+
+        # This backend judges relevance rather than only ordering it, and marks a
+        # candidate it would prune with a score of exactly 0.0. It cannot remove the
+        # candidate itself — predict() returns one score per pair and never sees the
+        # candidates — so acting on the verdict belongs here, where they live. The
+        # alternative is carrying junk down to the token budget, which cuts by rank
+        # and so keeps whatever is left when nothing is relevant.
+        kept = [result for result in scored_results if result.weight > 0.0]
+        logger.info(f"Reranking: reranker kept {len(kept)}/{len(scored_results)} candidates as relevant")
+        return RerankResult(results=kept, provider_name=served_provider)
