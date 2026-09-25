@@ -58,18 +58,26 @@ export async function ingestChats(
     async (s, i) => {
       const id = s.id || `s${i}`;
       const stamp = opts.stampFor?.(id);
-      // each turn gets an ABSOLUTE timestamp: its own if provided, else synthesized from the real clock,
-      // staggered per session + 1 min/turn to preserve ordering. List order is CHRONOLOGICAL (a later
-      // chat can amend an earlier one), so the LAST session is the newest — the previous `NOW - i*1h`
-      // inverted recency and made an amendment rank older than the decision it superseded.
+      // List order is CHRONOLOGICAL (a later chat can amend an earlier one), so the LAST session is
+      // the newest — the previous `NOW - i*1h` inverted recency and made an amendment rank older than
+      // the decision it superseded. This synthetic stagger is therefore only a FALLBACK, for a
+      // transcript that carries no clocks of its own.
       const sessBase = NOW - (sessions.length - 1 - i) * 3600000;
-      const baseIso = new Date(sessBase).toISOString();
+      // A backfilled session keeps the clock it actually happened on: when any turn carries a source
+      // timestamp, the first one dates the document (verbatim, offset included) and anchors the
+      // turns that have none. Dating it to the import made an old session surface as recent even
+      // though every turn inside it was dated correctly.
+      const sourceTs = (s.turns || [])
+        .map((t) => t.timestamp)
+        .find((v): v is string => typeof v === "string" && !Number.isNaN(Date.parse(v)));
+      const anchorMs = sourceTs ? Date.parse(sourceTs) : sessBase;
+      const baseIso = sourceTs ?? new Date(sessBase).toISOString();
       const turns = withRefId(
         `chat:${id}`,
         (s.turns || []).map((t, j) => ({
           role: t.role,
           content: t.text,
-          timestamp: t.timestamp || new Date(sessBase + (j + 1) * 60000).toISOString(),
+          timestamp: t.timestamp || new Date(anchorMs + (j + 1) * 60000).toISOString(),
         })),
         baseIso
       );
@@ -186,6 +194,10 @@ function serialize(
   return next;
 }
 
+/** The `context` of a session write-back when `retainContext` is unset. */
+export const DEFAULT_RETAIN_CONTEXT =
+  "conversation between the user and you (the coding agent): user turns are the user's words and decisions, assistant turns are yours";
+
 /**
  * Live write-back: upsert a running session under a stable document_id, sending only what is new.
  *
@@ -240,8 +252,12 @@ async function writeSession(
 ): Promise<void> {
   if (!turns.length) return;
   const refId = `conversation:${sessionId}`;
-  const appendSupported = Boolean(cursors) && (await supportsAppend(client));
   const cursor = cursors?.read(sessionId);
+  // A "yes" is remembered on the cursor: hook harnesses run a fresh process per Stop, so without it
+  // every turn re-asked, and one slow or failed probe turned that turn's append into a full replace
+  // (#4560). A "no" is not remembered — the server can be upgraded mid-session.
+  const appendSupported =
+    Boolean(cursors) && (cursor?.appendSupported === true || (await supportsAppend(client)));
   const plan = planRetain(turns, cursor, { appendSupported, bank: client.bank });
   // Appends built but never confirmed. A replace rewrites the whole document from the same
   // transcript, so it SUBSUMES them; on every other path they go out first, oldest first, before
@@ -256,7 +272,10 @@ async function writeSession(
   const submit = (content: string, operationId: string, append: boolean) =>
     client.retain(
       content,
-      "coding agent session",
+      // Configured context wins. Extraction reads this to decide whose claim a sentence is, so the
+      // default names both speakers: the previous "coding agent session" said nothing about
+      // authorship and let an assistant's proposal be recorded as the user's decision.
+      stamp?.context ?? DEFAULT_RETAIN_CONTEXT,
       refId,
       // Configured tags first, built-ins last and deduped: `source:chat` and `harness:<id>` are what
       // the documents list filters and draws its agent logo from, so a template cannot displace them.
@@ -288,6 +307,7 @@ async function writeSession(
     turns: turns.length,
     fingerprint: fingerprintTurns(turns, turns.length),
     bank: client.bank,
+    ...(appendSupported ? { appendSupported: true } : {}),
   };
   // Still ours to retry only while the cursor holds the claim we write below.
   const stillOurs = () => {

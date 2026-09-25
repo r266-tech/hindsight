@@ -16,7 +16,13 @@ import time
 from contextlib import AbstractAsyncContextManager, nullcontext
 from typing import Any, Callable
 
-from hindsight_api.engine.llm_interface import LLM_TOOL_CHOICE_AUTO, LLMInterface, LLMToolChoice
+from hindsight_api.engine.cache_affinity import apply_opencode_session
+from hindsight_api.engine.llm_interface import (
+    LLM_TOOL_CHOICE_AUTO,
+    LLMInterface,
+    LLMToolChoice,
+    LLMToolChoiceMode,
+)
 from hindsight_api.engine.llm_trace import LLMResponseUsage, stash_response_usage
 from hindsight_api.engine.llm_transport import build_sdk_timeout, describe_transport_error
 from hindsight_api.engine.providers.llm_debug import dump_request_on_4xx
@@ -207,7 +213,7 @@ class AnthropicLLM(LLMInterface):
 
         # Import and initialize Anthropic client
         try:
-            from anthropic import AsyncAnthropic
+            from anthropic import AsyncAnthropic, Timeout
 
             # SDK retries disabled — wrapper-level retry loop in ``call`` handles
             # backoff (mirrors ``OpenAICompatibleLLM`` so the two providers behave
@@ -215,8 +221,10 @@ class AnthropicLLM(LLMInterface):
             client_kwargs: dict[str, Any] = {"api_key": self.api_key, "max_retries": 0}
             if self.base_url:
                 client_kwargs["base_url"] = self.base_url
-            # Per-phase so the connect leg is capped independently (issue #3881).
-            client_kwargs["timeout"] = build_sdk_timeout(self.timeout or _DEFAULT_ANTHROPIC_TIMEOUT)
+            # Per-phase so the connect leg is capped independently (issue #3881). Built
+            # with the SDK's own Timeout: anthropic 1.x runs on httpx2 and rejects an
+            # httpx.Timeout, or on 1.0.x fails every request with it (issue #4683).
+            client_kwargs["timeout"] = build_sdk_timeout(self.timeout or _DEFAULT_ANTHROPIC_TIMEOUT, Timeout)
             if default_headers:
                 client_kwargs["default_headers"] = default_headers
 
@@ -340,6 +348,10 @@ class AnthropicLLM(LLMInterface):
 
         if self._extra_body:
             call_params["extra_body"] = self._extra_body
+
+        # opencode-go's /v1/messages requires x-opencode-session (#4071), reached
+        # via provider=anthropic + an opencode.ai base URL; the host check decides.
+        apply_opencode_session(call_params, base_url=self.base_url)
 
         last_exception = None
 
@@ -601,11 +613,29 @@ class AnthropicLLM(LLMInterface):
             "tools": anthropic_tools,
             "max_tokens": max_completion_tokens or _DEFAULT_MAX_TOKENS,
         }
+        # Map the canonical modes onto Anthropic's own tool_choice. A named choice
+        # rides the wire natively, so the complete tool list stays on the request
+        # instead of being narrowed to the forced tool.
+        if tool_choice.mode is LLMToolChoiceMode.NAMED:
+            forced_name = tool_choice.selected_function_name
+            matching = [tool for tool in anthropic_tools if tool.get("name") == forced_name]
+            if len(matching) != 1:
+                raise ValueError(
+                    f"Named tool_choice must reference exactly one declared tool; "
+                    f"found {len(matching)} definitions for {forced_name!r}"
+                )
+            call_params["tool_choice"] = {"type": "tool", "name": forced_name}
+        elif tool_choice.mode is LLMToolChoiceMode.REQUIRED:
+            call_params["tool_choice"] = {"type": "any"}
+        elif tool_choice.mode is LLMToolChoiceMode.NONE:
+            call_params["tool_choice"] = {"type": "none"}
         if system_prompt:
             call_params["system"] = _cached_system_blocks(system_prompt)
 
         if self._extra_body:
             call_params["extra_body"] = self._extra_body
+
+        apply_opencode_session(call_params, base_url=self.base_url)
 
         last_exception = None
         for attempt in range(max_retries + 1):

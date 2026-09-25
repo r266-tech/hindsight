@@ -390,21 +390,17 @@ def _content_or_error(response: Any, *, provider: str, model: str, scope: str) -
 
 
 def _usage_from_openai_response(response: Any) -> LLMResponseUsage:
-    """Extract prompt/completion/cached token counts from an OpenAI-shaped usage block."""
-    usage = getattr(response, "usage", None)
-    input_tokens = (usage.prompt_tokens or 0) if usage else 0
-    output_tokens = (usage.completion_tokens or 0) if usage else 0
-    cached_tokens = 0
-    if usage and getattr(usage, "prompt_tokens_details", None):
-        cached_tokens = getattr(usage.prompt_tokens_details, "cached_tokens", 0) or 0
+    """Extract input / visible-output / cached / reasoning counts from an OpenAI-shaped usage block."""
+    usage = visible_token_usage(response)
     return LLMResponseUsage(
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cached_tokens=cached_tokens,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cached_tokens=usage.cached_tokens,
+        thoughts_tokens=usage.thoughts_tokens,
     )
 
 
-def _visible_token_usage(response: Any) -> TokenUsage:
+def visible_token_usage(response: Any) -> TokenUsage:
     """Normalize an OpenAI-shaped usage block into visible-only output plus reasoning.
 
     The ``TokenUsage`` contract — and the Gemini provider — treat
@@ -487,7 +483,13 @@ def _ensure_json_word_in_user_message(messages: list[dict[str, Any]]) -> list[di
 # for `tool_choice`. `"none"`, `"required"`, and named function choices are not
 # currently supported'. Reflect's agent loop forces a retrieval tool on its first
 # turn, so without this every reflect call against Meta fails outright.
-_NON_AUTO_TOOL_CHOICE_UNSUPPORTED_PROVIDERS = frozenset({"meta"})
+# Z.AI answers the same way: 'Tool choice must be auto' (#4246).
+_NON_AUTO_TOOL_CHOICE_UNSUPPORTED_PROVIDERS = frozenset({"meta", "zai"})
+
+# Vendor namespaces a gateway puts in front of the model id when it routes to one
+# of those endpoints. The gateway is the provider, so the set above cannot see
+# them: OpenRouter serves Z.AI as "z-ai/glm-5.3-flash".
+_NON_AUTO_TOOL_CHOICE_UNSUPPORTED_MODEL_VENDORS = frozenset({"z-ai", "zai"})
 
 
 def _summarize_status_error(e: APIStatusError, body_max: int = 400) -> str:
@@ -522,7 +524,12 @@ _RATE_LIMIT_RESET_AT_RE = re.compile(
     re.IGNORECASE,
 )
 _RATE_LIMIT_WINDOW_RE = re.compile(
-    r"\b(?:for|in)\s+(?P<amount>\d+)\s*(?P<unit>second|minute|hour|day)s?\b",
+    # "try again in 5 hours", "retry for 30 seconds" — and the imperative form
+    # "Wait 10 seconds and try again", which gateways emit without any
+    # preposition at all. Without `wait` that message parses to nothing and the
+    # caller falls back to a blind exponential backoff that can be shorter than
+    # the pause the server just asked for.
+    r"\b(?:for|in|wait)\s+(?P<amount>\d+)\s*(?P<unit>second|minute|hour|day)s?\b",
     re.IGNORECASE,
 )
 
@@ -546,6 +553,49 @@ def _parse_go_duration_seconds(text: str) -> float | None:
         total += float(m.group("amount")) * _GO_DURATION_UNIT_SECONDS[m.group("unit")]
         pos = m.end()
     return total if pos else None
+
+
+def _retry_after_seconds_in_body(e: APIStatusError) -> float | None:
+    """Seconds from a machine-readable ``retry_after`` field in the error body.
+
+    Some OpenAI-compatible gateways state the pause as a number in the JSON body
+    (``{"detail": {"retry_after": 27}}``) rather than in a ``Retry-After``
+    header or in prose. That number is the most reliable hint available for
+    those providers: reading it turns a blind backoff into the wait the server
+    actually asked for. Searched recursively because the field sits under
+    ``detail``/``error`` as often as at the top level.
+    """
+
+    def walk(node: Any, depth: int = 0) -> float | None:
+        if depth > 4:
+            return None
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if isinstance(key, str) and key.lower() in ("retry_after", "retryafter"):
+                    try:
+                        seconds = float(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if seconds > 0:
+                        return seconds
+            for value in node.values():
+                found = walk(value, depth + 1)
+                if found is not None:
+                    return found
+        elif isinstance(node, list):
+            for value in node:
+                found = walk(value, depth + 1)
+                if found is not None:
+                    return found
+        return None
+
+    body: Any = getattr(e, "body", None)
+    if isinstance(body, str):
+        try:
+            body = json.loads(body)
+        except (ValueError, TypeError):
+            return None
+    return walk(body)
 
 
 def _status_error_body_text(e: APIStatusError) -> str:
@@ -633,6 +683,13 @@ def _rate_limit_retry_at(e: APIStatusError) -> datetime | None:
         retry_at = _parse_reset_at_datetime(reset_match.group("reset_at"))
         if retry_at is not None and retry_at > now:
             body_retry_at = retry_at
+
+    if body_retry_at is None:
+        # A numeric field beats prose: it needs no locale-specific parsing and
+        # is what the gateway's own client libraries read.
+        seconds = _retry_after_seconds_in_body(e)
+        if seconds is not None:
+            body_retry_at = now + timedelta(seconds=seconds)
 
     if body_retry_at is None:
         window_match = _RATE_LIMIT_WINDOW_RE.search(body_text)
@@ -911,8 +968,15 @@ class OpenAICompatibleLLM(LLMInterface):
         endpoints fail the request outright with HTTP 400, so reflect gets no
         answer at all. Meta Model API is the first of them — it rejects "none",
         "required" and named choices alike.
+
+        A gateway reports itself as the provider, so the same endpoint reached
+        through one is identified by the vendor namespace of the model id. The
+        bare model name is not matched: it names the weights, not the endpoint.
         """
-        return self.provider in _NON_AUTO_TOOL_CHOICE_UNSUPPORTED_PROVIDERS
+        if self.provider in _NON_AUTO_TOOL_CHOICE_UNSUPPORTED_PROVIDERS:
+            return True
+        namespaces = self.model.lower().split("/")[:-1]
+        return any(ns in _NON_AUTO_TOOL_CHOICE_UNSUPPORTED_MODEL_VENDORS for ns in namespaces)
 
     def _verification_max_completion_tokens(self) -> int:
         """Return the startup verification budget for OpenAI-compatible gateways."""
@@ -1187,7 +1251,7 @@ class OpenAICompatibleLLM(LLMInterface):
         # deterministic (the schema text is fixed per response_format), so the id
         # stays stable across the calls of one run.
         apply_cache_affinity(call_params, self._cache_affinity)
-        apply_opencode_session(call_params, self.provider)
+        apply_opencode_session(call_params, base_url=self.base_url)
 
         last_exception = None
 
@@ -1300,8 +1364,8 @@ class OpenAICompatibleLLM(LLMInterface):
                 usage = response.usage
                 # ``output_tokens``/``total_tokens`` are visible-only past this
                 # point, with reasoning surfaced separately in
-                # ``thoughts_tokens`` — see ``_visible_token_usage``.
-                token_counts = _visible_token_usage(response)
+                # ``thoughts_tokens`` — see ``visible_token_usage``.
+                token_counts = visible_token_usage(response)
                 input_tokens = token_counts.input_tokens
                 output_tokens = token_counts.output_tokens
                 total_tokens = token_counts.total_tokens
@@ -1341,6 +1405,7 @@ class OpenAICompatibleLLM(LLMInterface):
                     finish_reason=finish_reason,
                     error=None,
                     cached_tokens=cached_tokens,
+                    thoughts_tokens=thoughts_tokens,
                 )
 
                 # Log slow calls
@@ -1526,8 +1591,8 @@ class OpenAICompatibleLLM(LLMInterface):
         if "deepseek" in self.model.lower() and tool_choice.mode is not LLMToolChoiceMode.AUTO:
             request_tool_choice = None
 
-        # Meta rejects any tool_choice other than "auto" outright (HTTP 400), so the
-        # field has to come off the request entirely. A named choice has already been
+        # Meta and Z.AI (direct or via a gateway) reject any tool_choice other than
+        # "auto" outright (HTTP 400), so the field has to come off the request entirely. A named choice has already been
         # narrowed to a single tool above, so the call stays practically forced under
         # auto — the same reasoning as the DeepSeek branch. NOTE: "none" cannot be
         # expressed this way and would become "auto"; no caller on this path uses it
@@ -1600,7 +1665,7 @@ class OpenAICompatibleLLM(LLMInterface):
 
         apply_bank_attribution(call_params)
         apply_cache_affinity(call_params, self._cache_affinity)
-        apply_opencode_session(call_params, self.provider)
+        apply_opencode_session(call_params, base_url=self.base_url)
 
         last_exception = None
 
@@ -1609,6 +1674,7 @@ class OpenAICompatibleLLM(LLMInterface):
                 async with attempt_context() if attempt_context is not None else nullcontext():
                     set_stage(f"llm.{self.provider}.tools.attempt={attempt + 1}/{max_retries + 1}")
                     response = await self._client.chat.completions.create(**call_params)
+                    stash_response_usage(_usage_from_openai_response(response))
 
                 message = response.choices[0].message
                 finish_reason = response.choices[0].finish_reason
@@ -1627,9 +1693,9 @@ class OpenAICompatibleLLM(LLMInterface):
 
                 # Record metrics
                 duration = time.time() - start_time
-                # See ``_visible_token_usage``: ``output_tokens`` is visible-only,
+                # See ``visible_token_usage``: ``output_tokens`` is visible-only,
                 # with reasoning surfaced separately in ``thoughts_tokens``.
-                token_counts = _visible_token_usage(response)
+                token_counts = visible_token_usage(response)
                 input_tokens = token_counts.input_tokens
                 output_tokens = token_counts.output_tokens
                 cached_tokens = token_counts.cached_tokens
@@ -1672,6 +1738,8 @@ class OpenAICompatibleLLM(LLMInterface):
                     finish_reason=finish_reason,
                     error=None,
                     tool_calls=tool_calls_dict,
+                    cached_tokens=cached_tokens,
+                    thoughts_tokens=thoughts_tokens,
                 )
 
                 return LLMToolCallResult(
