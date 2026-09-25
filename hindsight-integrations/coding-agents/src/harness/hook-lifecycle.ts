@@ -189,7 +189,7 @@ const copilotPrompt: HookSpec = {
   }),
 };
 
-const devinCwd = (): string | undefined => process.env.DEVIN_PROJECT_DIR;
+const devinCwd = (): string => process.env.DEVIN_PROJECT_DIR || process.cwd();
 const devinPrompt: HookSpec = {
   harness: "devin-cli",
   requireCwd: true,
