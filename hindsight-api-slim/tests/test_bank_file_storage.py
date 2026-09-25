@@ -31,16 +31,15 @@ def test_an_empty_bank_id_is_refused():
 
 
 def test_maximum_bank_id_stays_within_object_store_key_budget():
-    """The creation limit also leaves room for the encoded storage-key suffix."""
+    """The longest bank id creation accepts still leaves room for the rest of an object-store key (#4391)."""
+    # Percent-encoding turns every UTF-8 byte of a CJK character into 3 key bytes: the worst case.
     bank_id = "界" * (BANK_ID_MAX_BYTES // len("界".encode()))
-    prefix = bank_storage_prefix(bank_id, schema="tenant")
-    object_key = f"{prefix}files/{uuid.uuid4()}/original-name.txt"
+    assert len(key_segment(bank_id)) == 3 * BANK_ID_MAX_BYTES
 
-    # S3-compatible stores cap object keys at 1,024 UTF-8 bytes.  The bank-id
-    # limit is deliberately expressed before percent encoding, so this test
-    # protects the end-to-end invariant when key_segment or the suffix grows.
-    assert len(object_key.encode("utf-8")) < 1024
-    assert len(key_segment(bank_id).encode("ascii")) == (BANK_ID_MAX_BYTES // 3) * 9
+    # S3-compatible stores cap object keys at 1,024 bytes. The bank-id limit counts bytes before
+    # encoding, so this fails if the limit or the encoding grows past what a file key can hold.
+    object_key = f"{bank_storage_prefix(bank_id, schema='tenant')}files/{uuid.uuid4()}/original-name.txt"
+    assert len(object_key.encode()) < 1024
 
 
 @pytest.mark.asyncio
