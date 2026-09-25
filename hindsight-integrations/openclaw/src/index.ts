@@ -133,7 +133,7 @@ let currentPluginConfig: PluginConfig | null = null;
 let serviceGeneration = 0;
 let serviceAbortController: AbortController | null = null;
 // External-API hooks can lazy-initialize before the first service.start(). Keep
-// that recall-only lifetime cancellable without enabling pre-start retention.
+// that first-hook lifetime cancellable until lazy initialization adopts it.
 const preServiceRecallController = new AbortController();
 
 // Track which banks have had configured defaults applied (missions + bank config).
@@ -3014,11 +3014,15 @@ ${memoriesFormatted}
       const force = retainOptions.force === true;
       const hookName = retainOptions.hookName;
       const retainGeneration = serviceGeneration;
-      const retainController = serviceAbortController;
+      // Like recall, the first retain hook must reach waitForReady() before
+      // start(). Only generation zero may borrow this lifetime; stop() must
+      // still suppress late hooks instead of lazily reviving the service.
+      const retainController =
+        serviceAbortController ?? (retainGeneration === 0 ? preServiceRecallController : null);
       const retainSignal = retainController?.signal;
       const retainLifecycleIsCurrent = () =>
         retainController !== null &&
-        serviceAbortController === retainController &&
+        (serviceAbortController ?? preServiceRecallController) === retainController &&
         retainGeneration === serviceGeneration &&
         !retainSignal?.aborted;
       if (!retainLifecycleIsCurrent()) return;
