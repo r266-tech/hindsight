@@ -177,9 +177,11 @@ class ReflectToolCallError(RuntimeError):
     calling and silently drop the tool definitions from the request (e.g. litellm's
     Vertex AI gpt-oss MaaS path strips ``tools``/``tool_choice`` when the model is
     flagged as not supporting them). The model then answers in free text that may
-    mimic a ``done`` payload. Rather than salvage that untooled text -- and risk
-    surfacing raw tool-call JSON as the answer -- we fail loudly so the caller can
-    switch to a tool-calling-capable model/transport.
+    mimic a ``done`` payload. Other endpoints support tools but ignore the forced
+    tool choice for some prompts only (#4557). Rather than salvage that untooled
+    text -- and risk surfacing raw tool-call JSON as the answer -- we fail loudly,
+    naming the requested tool choice and the response's finish reason so the
+    operator can tell the two cases apart.
     """
 
 
