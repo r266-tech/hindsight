@@ -16014,7 +16014,7 @@
               }
             ],
             "title": "Mental Model Id",
-            "description": "Mental model this operation acted on (refresh_mental_model); null for other task types. Without it the list cannot say which model an operation refreshed \u2014 `document_id` is null for these, and the list carries no result_metadata. The single-operation read exposes the same value under `result_metadata`."
+            "description": "Mental model this operation acted on (refresh_mental_model); null for other task types. Without it the list cannot say which model an operation refreshed \u2014 `document_id` is null for these, and the list carries no result_metadata. The single-operation read exposes the same top-level field."
           },
           "details": {
             "anyOf": [
@@ -16120,6 +16120,11 @@
             "type": "string",
             "title": "Operation Id"
           },
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Alias of operation_id, matching the operation list response."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -16142,6 +16147,30 @@
               }
             ],
             "title": "Operation Type"
+          },
+          "task_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Type",
+            "description": "Alias of operation_type, matching the operation list response."
+          },
+          "mental_model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mental Model Id",
+            "description": "Mental model this operation acted on (refresh_mental_model); null for other task types."
           },
           "created_at": {
             "anyOf": [
@@ -16278,6 +16307,7 @@
         "type": "object",
         "required": [
           "operation_id",
+          "id",
           "status"
         ],
         "title": "OperationStatusResponse",
@@ -16285,9 +16315,12 @@
         "example": {
           "completed_at": "2024-01-15T10:31:30Z",
           "created_at": "2024-01-15T10:30:00Z",
+          "id": "550e8400-e29b-41d4-a716-446655440000",
+          "mental_model_id": "model-to-monitor",
           "operation_id": "550e8400-e29b-41d4-a716-446655440000",
           "operation_type": "refresh_mental_model",
           "status": "completed",
+          "task_type": "refresh_mental_model",
           "updated_at": "2024-01-15T10:31:30Z"
         }
       },

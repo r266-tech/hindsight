@@ -22,8 +22,12 @@ var _ MappedNullable = &OperationStatusResponse{}
 // OperationStatusResponse Response model for getting a single operation status.
 type OperationStatusResponse struct {
 	OperationId string `json:"operation_id"`
+	// Alias of operation_id, matching the operation list response.
+	Id string `json:"id"`
 	Status string `json:"status"`
 	OperationType NullableString `json:"operation_type,omitempty"`
+	TaskType NullableString `json:"task_type,omitempty"`
+	MentalModelId NullableString `json:"mental_model_id,omitempty"`
 	CreatedAt NullableString `json:"created_at,omitempty"`
 	UpdatedAt NullableString `json:"updated_at,omitempty"`
 	CompletedAt NullableString `json:"completed_at,omitempty"`
@@ -43,9 +47,10 @@ type _OperationStatusResponse OperationStatusResponse
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewOperationStatusResponse(operationId string, status string) *OperationStatusResponse {
+func NewOperationStatusResponse(operationId string, id string, status string) *OperationStatusResponse {
 	this := OperationStatusResponse{}
 	this.OperationId = operationId
+	this.Id = id
 	this.Status = status
 	return &this
 }
@@ -80,6 +85,30 @@ func (o *OperationStatusResponse) GetOperationIdOk() (*string, bool) {
 // SetOperationId sets field value
 func (o *OperationStatusResponse) SetOperationId(v string) {
 	o.OperationId = v
+}
+
+// GetId returns the Id field value
+func (o *OperationStatusResponse) GetId() string {
+	if o == nil {
+		var ret string
+		return ret
+	}
+
+	return o.Id
+}
+
+// GetIdOk returns a tuple with the Id field value
+// and a boolean to check if the value has been set.
+func (o *OperationStatusResponse) GetIdOk() (*string, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return &o.Id, true
+}
+
+// SetId sets field value
+func (o *OperationStatusResponse) SetId(v string) {
+	o.Id = v
 }
 
 // GetStatus returns the Status field value
@@ -146,6 +175,90 @@ func (o *OperationStatusResponse) SetOperationTypeNil() {
 // UnsetOperationType ensures that no value is present for OperationType, not even an explicit nil
 func (o *OperationStatusResponse) UnsetOperationType() {
 	o.OperationType.Unset()
+}
+
+// GetTaskType returns the TaskType field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *OperationStatusResponse) GetTaskType() string {
+	if o == nil || IsNil(o.TaskType.Get()) {
+		var ret string
+		return ret
+	}
+	return *o.TaskType.Get()
+}
+
+// GetTaskTypeOk returns a tuple with the TaskType field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+func (o *OperationStatusResponse) GetTaskTypeOk() (*string, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return o.TaskType.Get(), o.TaskType.IsSet()
+}
+
+// HasTaskType returns a boolean if a field has been set.
+func (o *OperationStatusResponse) HasTaskType() bool {
+	if o != nil && o.TaskType.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetTaskType gets a reference to the given NullableString and assigns it to the TaskType field.
+func (o *OperationStatusResponse) SetTaskType(v string) {
+	o.TaskType.Set(&v)
+}
+// SetTaskTypeNil sets the value for TaskType to be an explicit nil
+func (o *OperationStatusResponse) SetTaskTypeNil() {
+	o.TaskType.Set(nil)
+}
+
+// UnsetTaskType ensures that no value is present for TaskType, not even an explicit nil
+func (o *OperationStatusResponse) UnsetTaskType() {
+	o.TaskType.Unset()
+}
+
+// GetMentalModelId returns the MentalModelId field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *OperationStatusResponse) GetMentalModelId() string {
+	if o == nil || IsNil(o.MentalModelId.Get()) {
+		var ret string
+		return ret
+	}
+	return *o.MentalModelId.Get()
+}
+
+// GetMentalModelIdOk returns a tuple with the MentalModelId field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+func (o *OperationStatusResponse) GetMentalModelIdOk() (*string, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return o.MentalModelId.Get(), o.MentalModelId.IsSet()
+}
+
+// HasMentalModelId returns a boolean if a field has been set.
+func (o *OperationStatusResponse) HasMentalModelId() bool {
+	if o != nil && o.MentalModelId.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetMentalModelId gets a reference to the given NullableString and assigns it to the MentalModelId field.
+func (o *OperationStatusResponse) SetMentalModelId(v string) {
+	o.MentalModelId.Set(&v)
+}
+// SetMentalModelIdNil sets the value for MentalModelId to be an explicit nil
+func (o *OperationStatusResponse) SetMentalModelIdNil() {
+	o.MentalModelId.Set(nil)
+}
+
+// UnsetMentalModelId ensures that no value is present for MentalModelId, not even an explicit nil
+func (o *OperationStatusResponse) UnsetMentalModelId() {
+	o.MentalModelId.Unset()
 }
 
 // GetCreatedAt returns the CreatedAt field value if set, zero value otherwise (both if not set or set to explicit null).
@@ -594,9 +707,16 @@ func (o OperationStatusResponse) MarshalJSON() ([]byte, error) {
 func (o OperationStatusResponse) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	toSerialize["operation_id"] = o.OperationId
+	toSerialize["id"] = o.Id
 	toSerialize["status"] = o.Status
 	if o.OperationType.IsSet() {
 		toSerialize["operation_type"] = o.OperationType.Get()
+	}
+	if o.TaskType.IsSet() {
+		toSerialize["task_type"] = o.TaskType.Get()
+	}
+	if o.MentalModelId.IsSet() {
+		toSerialize["mental_model_id"] = o.MentalModelId.Get()
 	}
 	if o.CreatedAt.IsSet() {
 		toSerialize["created_at"] = o.CreatedAt.Get()
@@ -640,6 +760,7 @@ func (o *OperationStatusResponse) UnmarshalJSON(data []byte) (err error) {
 	// that every required field exists as a key in the generic map.
 	requiredProperties := []string{
 		"operation_id",
+		"id",
 		"status",
 	}
 

@@ -17,7 +17,7 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
 from typing import Any, ClassVar, Dict, List, Optional
 from hindsight_client_api.models.child_operation_status import ChildOperationStatus
 from hindsight_client_api.models.operation_progress import OperationProgress
@@ -30,8 +30,11 @@ class OperationStatusResponse(BaseModel):
     Response model for getting a single operation status.
     """ # noqa: E501
     operation_id: StrictStr
+    id: StrictStr = Field(description="Alias of operation_id, matching the operation list response.")
     status: StrictStr
     operation_type: Optional[StrictStr] = None
+    task_type: Optional[StrictStr] = None
+    mental_model_id: Optional[StrictStr] = None
     created_at: Optional[StrictStr] = None
     updated_at: Optional[StrictStr] = None
     completed_at: Optional[StrictStr] = None
@@ -43,7 +46,7 @@ class OperationStatusResponse(BaseModel):
     details: Optional[RefreshMentalModelOperationDetails] = None
     child_operations: Optional[List[ChildOperationStatus]] = None
     task_payload: Optional[Dict[str, Any]] = None
-    __properties: ClassVar[List[str]] = ["operation_id", "status", "operation_type", "created_at", "updated_at", "completed_at", "error_message", "retry_count", "next_retry_at", "progress", "result_metadata", "details", "child_operations", "task_payload"]
+    __properties: ClassVar[List[str]] = ["operation_id", "id", "status", "operation_type", "task_type", "mental_model_id", "created_at", "updated_at", "completed_at", "error_message", "retry_count", "next_retry_at", "progress", "result_metadata", "details", "child_operations", "task_payload"]
 
     @field_validator('status')
     def status_validate_enum(cls, value):
@@ -108,6 +111,16 @@ class OperationStatusResponse(BaseModel):
         # and model_fields_set contains the field
         if self.operation_type is None and "operation_type" in self.model_fields_set:
             _dict['operation_type'] = None
+
+        # set to None if task_type (nullable) is None
+        # and model_fields_set contains the field
+        if self.task_type is None and "task_type" in self.model_fields_set:
+            _dict['task_type'] = None
+
+        # set to None if mental_model_id (nullable) is None
+        # and model_fields_set contains the field
+        if self.mental_model_id is None and "mental_model_id" in self.model_fields_set:
+            _dict['mental_model_id'] = None
 
         # set to None if created_at (nullable) is None
         # and model_fields_set contains the field
@@ -177,8 +190,11 @@ class OperationStatusResponse(BaseModel):
 
         _obj = cls.model_validate({
             "operation_id": obj.get("operation_id"),
+            "id": obj.get("id"),
             "status": obj.get("status"),
             "operation_type": obj.get("operation_type"),
+            "task_type": obj.get("task_type"),
+            "mental_model_id": obj.get("mental_model_id"),
             "created_at": obj.get("created_at"),
             "updated_at": obj.get("updated_at"),
             "completed_at": obj.get("completed_at"),
