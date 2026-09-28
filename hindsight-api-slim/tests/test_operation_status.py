@@ -9,6 +9,7 @@ Regression tests:
 """
 
 import asyncio
+import json
 import uuid
 from datetime import datetime
 
@@ -17,6 +18,7 @@ import pytest
 import pytest_asyncio
 
 from hindsight_api.api import create_app
+from hindsight_api.engine.memory_engine import MemoryEngine
 
 
 @pytest_asyncio.fixture
@@ -131,6 +133,63 @@ async def test_get_operation_returns_processing_status(api_client, memory, test_
     data = response.json()
     assert data["status"] == "processing"
     assert data["operation_id"] == processing_id
+    assert data["id"] == processing_id
+    assert data["task_type"] == data["operation_type"] == "retain"
+    assert data["mental_model_id"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_parent", [False, True])
+@pytest.mark.parametrize("include_bank_id", [False, True])
+async def test_operation_monitoring_fields_match_list_and_mcp(
+    api_client: httpx.AsyncClient,
+    memory: MemoryEngine,
+    test_bank_id: str,
+    is_parent: bool,
+    include_bank_id: bool,
+) -> None:
+    """A monitor can use list identity fields when polling HTTP or either MCP surface."""
+    from fastmcp import FastMCP
+
+    from hindsight_api.mcp_tools import MCPToolsConfig, register_mcp_tools
+
+    await _ensure_bank(memory._pool, test_bank_id)
+    operation_id = uuid.uuid4()
+    # Seed completed operations directly: this tests the read contract, not LLM refresh.
+    await memory._pool.execute(
+        """INSERT INTO async_operations
+           (operation_id, bank_id, operation_type, status, result_metadata)
+           VALUES ($1, $2, 'refresh_mental_model', 'completed', $3::jsonb)""",
+        operation_id,
+        test_bank_id,
+        json.dumps({"mental_model_id": "model-to-monitor", "is_parent": is_parent}),
+    )
+    listing = await api_client.get(f"/v1/default/banks/{test_bank_id}/operations")
+    response = await api_client.get(f"/v1/default/banks/{test_bank_id}/operations/{operation_id}")
+    assert listing.status_code == response.status_code == 200
+    listed = listing.json()["operations"][0]
+    status = response.json()
+
+    mcp = FastMCP("operation-monitoring")
+    register_mcp_tools(
+        mcp,
+        memory,
+        MCPToolsConfig(
+            bank_id_resolver=lambda: test_bank_id,
+            include_bank_id_param=include_bank_id,
+            tools={"get_operation"},
+        ),
+    )
+    result = await mcp.call_tool("get_operation", {"operation_id": str(operation_id)})
+    tool_status = json.loads(result.content[0].text)
+    for view in (status, tool_status):
+        assert view["id"] == view["operation_id"] == listed["id"] == str(operation_id)
+        assert view["task_type"] == view["operation_type"] == listed["task_type"] == "refresh_mental_model"
+        assert view["mental_model_id"] == listed["mental_model_id"] == "model-to-monitor"
+        assert view["result_metadata"]["mental_model_id"] == "model-to-monitor"
+        assert view["status"] == "completed"
+        if is_parent:
+            assert view["child_operations"] == []
 
 
 @pytest.mark.asyncio
@@ -409,6 +468,9 @@ async def test_delete_removes_terminal_operation(api_client, memory, test_bank_i
     response = await api_client.get(f"/v1/default/banks/{test_bank_id}/operations/{op_id}")
     assert response.status_code == 200
     assert response.json()["status"] == "not_found"
+    assert response.json()["id"] == response.json()["operation_id"] == op_id
+    assert response.json()["task_type"] is None
+    assert response.json()["mental_model_id"] is None
 
     response = await api_client.get(
         f"/v1/default/banks/{test_bank_id}/operations",

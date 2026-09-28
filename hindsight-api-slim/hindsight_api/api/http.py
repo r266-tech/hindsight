@@ -4362,7 +4362,7 @@ class OperationResponse(BaseModel):
             "Mental model this operation acted on (refresh_mental_model); null for other task types. "
             "Without it the list cannot say which model an operation refreshed — `document_id` is null "
             "for these, and the list carries no result_metadata. The single-operation read exposes the "
-            "same value under `result_metadata`."
+            "same top-level field."
         ),
     )
     details: RefreshMentalModelOperationDetails | None = Field(
@@ -4527,8 +4527,11 @@ class OperationStatusResponse(BaseModel):
         json_schema_extra={
             "example": {
                 "operation_id": "550e8400-e29b-41d4-a716-446655440000",
+                "id": "550e8400-e29b-41d4-a716-446655440000",
                 "status": "completed",
                 "operation_type": "refresh_mental_model",
+                "task_type": "refresh_mental_model",
+                "mental_model_id": "model-to-monitor",
                 "created_at": "2024-01-15T10:30:00Z",
                 "updated_at": "2024-01-15T10:31:30Z",
                 "completed_at": "2024-01-15T10:31:30Z",
@@ -4538,8 +4541,16 @@ class OperationStatusResponse(BaseModel):
     )
 
     operation_id: str
+    id: str = Field(description="Alias of operation_id, matching the operation list response.")
     status: Literal["pending", "processing", "completed", "failed", "cancelled", "not_found"]
     operation_type: str | None = None
+    task_type: str | None = Field(
+        default=None, description="Alias of operation_type, matching the operation list response."
+    )
+    mental_model_id: str | None = Field(
+        default=None,
+        description="Mental model this operation acted on (refresh_mental_model); null for other task types.",
+    )
     created_at: str | None = None
     updated_at: str | None = None
     completed_at: str | None = None

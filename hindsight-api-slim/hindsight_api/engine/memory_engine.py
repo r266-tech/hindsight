@@ -21503,8 +21503,11 @@ class MemoryEngine(MemoryEngineInterface):
 
                     return {
                         "operation_id": operation_id,
+                        "id": operation_id,
                         "status": api_status,
                         "operation_type": row["operation_type"],
+                        "task_type": row["operation_type"],
+                        "mental_model_id": result_metadata.get("mental_model_id"),
                         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                         "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
                         "completed_at": row["completed_at"].isoformat() if row["completed_at"] else None,
@@ -21521,8 +21524,11 @@ class MemoryEngine(MemoryEngineInterface):
                     # Regular operation (not a parent)
                     return {
                         "operation_id": operation_id,
+                        "id": operation_id,
                         "status": api_status,
                         "operation_type": row["operation_type"],
+                        "task_type": row["operation_type"],
+                        "mental_model_id": result_metadata.get("mental_model_id"),
                         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                         "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
                         "completed_at": row["completed_at"].isoformat() if row["completed_at"] else None,
@@ -21538,8 +21544,11 @@ class MemoryEngine(MemoryEngineInterface):
                 # Operation not found
                 return {
                     "operation_id": operation_id,
+                    "id": operation_id,
                     "status": "not_found",
                     "operation_type": None,
+                    "task_type": None,
+                    "mental_model_id": None,
                     "created_at": None,
                     "updated_at": None,
                     "completed_at": None,

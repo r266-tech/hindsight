@@ -113,3 +113,14 @@ async def test_operations_are_listed_for_the_bank(client, bank_id, settled):
 
     listing = await client.operations.list_operations(bank_id, status="completed", limit=100)
     assert response.operation_id in [op.id for op in listing.operations]
+
+    # Use the generated client's raw-response method until the next SDK release
+    # adds these response fields to its typed model. Existing typed reads above
+    # continue to exercise the original operation_id/operation_type contract.
+    raw = await client.operations.get_operation_status_without_preload_content(bank_id, response.operation_id)
+    async with raw:
+        status = await raw.json()
+    listed = next(op for op in listing.operations if op.id == response.operation_id)
+    assert status["id"] == status["operation_id"] == listed.id
+    assert status["task_type"] == status["operation_type"] == listed.task_type == "batch_retain"
+    assert status["mental_model_id"] == listed.mental_model_id is None
