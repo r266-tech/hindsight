@@ -141,7 +141,9 @@ export function createPiHooks(
         return undefined;
       }
       diag(harness, "inject_ok", { session: sessionId, chars: injection.length });
-      // Returning a full prompt makes Pi ignore sections from later extensions.
+      // Hosts that compose the prompt from sections get the memory as one: a returned systemPrompt
+      // forces the whole prompt, so sections added by later extensions are dropped (#4841). Older
+      // hosts without sections still take the appended full prompt below.
       if (event.systemPromptOptions?.sections) {
         event.systemPromptOptions.sections.hindsight = injection;
         return undefined;
