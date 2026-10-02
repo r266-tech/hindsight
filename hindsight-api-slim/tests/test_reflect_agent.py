@@ -1203,6 +1203,150 @@ class TestReflectAgentMocked:
         mock_llm.call.assert_not_awaited()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("closing_outcome", ["error", "no_done", "done"])
+    async def test_disconnect_during_closing_stops_finalization(self, mock_llm, mock_functions, closing_outcome):
+        from hindsight_api.cancellation import CancellationToken
+
+        token = CancellationToken()
+        retrieval = LLMToolCallResult(
+            tool_calls=[LLMToolCall(id="recall", name="recall", arguments={"query": "test"})],
+            finish_reason="tool_calls",
+        )
+
+        async def closing(**kwargs):
+            token.cancel("client disconnected")
+            if closing_outcome == "error":
+                raise RuntimeError("closing provider timed out")
+            calls = []
+            if closing_outcome == "done":
+                calls = [LLMToolCall(id="done", name="done", arguments={"answer": "Already abandoned"})]
+            return LLMToolCallResult(tool_calls=calls, finish_reason="stop")
+
+        async def provider(**kwargs):
+            if mock_llm.call_with_tools.call_count == 1:
+                return retrieval
+            return await closing(**kwargs)
+
+        mock_llm.call_with_tools.side_effect = provider
+        with pytest.raises(OperationCancelledError, match="client disconnected"):
+            await run_reflect_agent(
+                llm_config=mock_llm,
+                bank_id="test-bank",
+                query="test query",
+                bank_profile={"name": "Test", "mission": "Testing"},
+                max_iterations=2,
+                cancel_check=token.raise_if_cancelled,
+                **mock_functions,
+            )
+        assert mock_llm.call_with_tools.await_count == 2
+        mock_functions["recall_fn"].assert_awaited_once()
+        mock_llm.call.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_after_synthesis_map_stops_reduce(self, mock_llm, mock_functions, monkeypatch):
+        from hindsight_api.cancellation import CancellationToken
+        import hindsight_api.engine.reflect.agent as agent
+
+        token = CancellationToken()
+        monkeypatch.setattr(agent, "split_context_history", lambda *args: [[], []])
+        started = []
+
+        async def synthesize(**kwargs):
+            started.append(kwargs["messages"])
+            token.cancel("client disconnected")
+            return LLMCallResult(
+                content="Partial claims", usage=TokenUsage(input_tokens=1, output_tokens=1, total_tokens=2)
+            )
+
+        mock_llm.call.side_effect = synthesize
+        with pytest.raises(OperationCancelledError, match="client disconnected"):
+            await run_reflect_agent(
+                llm_config=mock_llm,
+                bank_id="test-bank",
+                query="test query",
+                bank_profile={"name": "Test", "mission": "Testing"},
+                max_iterations=1,
+                cancel_check=token.raise_if_cancelled,
+                **mock_functions,
+            )
+        assert len(started) == 1
+        mock_llm.call_with_tools.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("provider_failed", [False, True])
+    async def test_disconnect_during_answer_rewrite_stops_schema_extraction(
+        self, mock_llm, mock_functions, provider_failed
+    ):
+        from hindsight_api.cancellation import CancellationToken
+
+        token = CancellationToken()
+        mock_llm.call_with_tools.side_effect = [
+            LLMToolCallResult(tool_calls=[LLMToolCall(id="recall", name="recall", arguments={"query": "test"})]),
+            LLMToolCallResult(
+                tool_calls=[LLMToolCall(id="done", name="done", arguments={"answer": "A long answer. " * 50})]
+            ),
+        ]
+
+        async def rewrite(**kwargs):
+            token.cancel("client disconnected")
+            if provider_failed:
+                raise RuntimeError("rewrite provider failed")
+            return LLMCallResult(content="Short.", usage=TokenUsage(input_tokens=1, output_tokens=1, total_tokens=2))
+
+        mock_llm.call.side_effect = rewrite
+        with pytest.raises(OperationCancelledError, match="client disconnected"):
+            await run_reflect_agent(
+                llm_config=mock_llm,
+                bank_id="test-bank",
+                query="test query",
+                bank_profile={"name": "Test", "mission": "Testing"},
+                max_iterations=3,
+                max_tokens=10,
+                response_schema={"type": "object", "properties": {"summary": {"type": "string"}}},
+                cancel_check=token.raise_if_cancelled,
+                **mock_functions,
+            )
+        assert mock_llm.call.await_count == 1
+        assert mock_llm.call.await_args.kwargs["scope"] == "reflect"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("provider_failed", [False, True])
+    async def test_disconnect_during_schema_extraction_is_not_a_soft_error(
+        self, mock_llm, mock_functions, provider_failed
+    ):
+        from hindsight_api.cancellation import CancellationToken
+
+        token = CancellationToken()
+        mock_llm.call_with_tools.side_effect = [
+            LLMToolCallResult(tool_calls=[LLMToolCall(id="recall", name="recall", arguments={"query": "test"})]),
+            LLMToolCallResult(tool_calls=[LLMToolCall(id="done", name="done", arguments={"answer": "Short answer."})]),
+        ]
+
+        async def extract(**kwargs):
+            token.cancel("client disconnected")
+            if provider_failed:
+                raise RuntimeError("schema provider failed")
+            return LLMCallResult(
+                content={"summary": "Short."}, usage=TokenUsage(input_tokens=1, output_tokens=1, total_tokens=2)
+            )
+
+        mock_llm.call.side_effect = extract
+        with pytest.raises(OperationCancelledError, match="client disconnected"):
+            await run_reflect_agent(
+                llm_config=mock_llm,
+                bank_id="test-bank",
+                query="test query",
+                bank_profile={"name": "Test", "mission": "Testing"},
+                max_iterations=3,
+                response_schema={"type": "object", "properties": {"summary": {"type": "string"}}},
+                cancel_check=token.raise_if_cancelled,
+                **mock_functions,
+            )
+        mock_llm.call.assert_awaited_once()
+
+        assert mock_llm.call.await_args.kwargs["scope"] == "reflect_structured"
+
+    @pytest.mark.asyncio
     async def test_normalizes_tool_names_in_other_tools(self, mock_llm, mock_functions):
         """Test that tool names are normalized for all tools, not just done."""
         mock_llm.call_with_tools.side_effect = [
