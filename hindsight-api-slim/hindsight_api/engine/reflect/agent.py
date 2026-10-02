@@ -385,6 +385,7 @@ OUTPUT:"""
             initial_backoff=0.25,
             max_backoff=1.0,
             skip_validation=True,  # We'll handle the dict ourselves
+            **({"cancel_check": cancel_check} if cancel_check is not None else {}),
         )
         if cancel_check is not None:
             cancel_check()
@@ -873,6 +874,7 @@ async def _run_reflect_agent_inner(
                 scope="reflect",
                 temperature=get_config().llm_temperature_reflect if temperature is None else temperature,
                 max_completion_tokens=completion_cap,
+                **({"cancel_check": cancel_check} if cancel_check is not None else {}),
             )
         except Exception:
             _check_cancelled()
@@ -926,6 +928,7 @@ async def _run_reflect_agent_inner(
                 tool_choice=LLMToolChoice.named("done"),
                 temperature=get_config().llm_temperature_reflect,
                 max_completion_tokens=synthesis_max_completion_tokens,
+                **({"cancel_check": cancel_check} if cancel_check is not None else {}),
             )
         except OperationCancelledError:
             raise
@@ -1206,6 +1209,8 @@ async def _run_reflect_agent_inner(
             if incremental_caching and iter_tool_choice is LLM_TOOL_CHOICE_AUTO and rolling_cache_name is not None:
                 ct_kwargs["cached_prefix"] = rolling_cache_name
                 ct_kwargs["cached_prefix_message_count"] = rolling_cache_boundary
+            if cancel_check is not None:
+                ct_kwargs["cancel_check"] = cancel_check
             result = await llm_config.call_with_tools(**ct_kwargs)
             _check_cancelled()
             llm_duration = int((time.time() - llm_start) * 1000)
@@ -1721,6 +1726,7 @@ async def _rewrite_to_length_budget(
             scope="reflect",
             temperature=get_config().llm_temperature_reflect,
             max_completion_tokens=get_config().reflect_max_completion_tokens,
+            **({"cancel_check": cancel_check} if cancel_check is not None else {}),
         )
     except Exception:
         if cancel_check is not None:

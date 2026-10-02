@@ -1243,6 +1243,86 @@ class TestReflectAgentMocked:
         mock_llm.call.assert_not_awaited()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("phase", ["closing", "synthesis", "rewrite", "schema"])
+    @pytest.mark.parametrize("use_failover", [False, True])
+    async def test_disconnect_stops_real_provider_retries(self, mock_functions, monkeypatch, phase, use_failover):
+        """Exercise the real wrapper/retry loop, replacing only the wire request."""
+        from hindsight_api.cancellation import CancellationToken
+        from hindsight_api.config import LLMStrategyConfig
+        from hindsight_api.engine.llm_wrapper import LLMProvider
+        from hindsight_api.engine.multi_llm import MultiLLMProvider
+
+        token = CancellationToken()
+        primary = LLMProvider(
+            provider="litellm",
+            api_key="unused",
+            base_url="http://localhost:0/v1",
+            model="litellm_proxy/test-model",
+            max_retries=3,
+            initial_backoff=0,
+            max_backoff=0,
+        )
+        secondary = LLMProvider(
+            provider="litellm",
+            api_key="unused",
+            base_url="http://localhost:0/v1",
+            model="litellm_proxy/fallback",
+            max_retries=0,
+        )
+        attempts = []
+
+        def response(tool_name):
+            value = MagicMock()
+            value.model = "test-model"
+            value.usage = None
+            value.choices[0].finish_reason = "tool_calls"
+            value.choices[0].message.content = None
+            tc = MagicMock()
+            tc.id = tool_name
+            tc.function.name = tool_name
+            answer = "A long answer. " * 50 if phase == "rewrite" else "Short answer."
+            tc.function.arguments = json.dumps({"query": "test"} if tool_name == "recall" else {"answer": answer})
+            value.choices[0].message.tool_calls = [tc]
+            return value
+
+        async def completion(**kwargs):
+            attempts.append(bool(kwargs.get("tools")))
+            if phase != "synthesis" and len(attempts) == 1:
+                return response("recall")
+            if phase in ("rewrite", "schema") and len(attempts) == 2:
+                return response("done")
+            # A retryable wire failure after disconnect used to start more attempts.
+            token.cancel("client disconnected")
+            raise TimeoutError("completion timed out")
+
+        monkeypatch.setattr(primary._provider_impl, "_acompletion", completion)
+        fallback_wire = AsyncMock(return_value=response("done"))
+        monkeypatch.setattr(secondary._provider_impl, "_acompletion", fallback_wire)
+        secondary.call = AsyncMock(wraps=secondary.call)
+        secondary.call_with_tools = AsyncMock(wraps=secondary.call_with_tools)
+        llm = MultiLLMProvider([primary, secondary], LLMStrategyConfig(mode="failover")) if use_failover else primary
+        with pytest.raises(OperationCancelledError, match="client disconnected"):
+            await run_reflect_agent(
+                llm_config=llm,
+                bank_id="test-bank",
+                query="test query",
+                bank_profile={"name": "Test", "mission": "Testing"},
+                max_iterations=1 if phase == "synthesis" else 2 if phase == "closing" else 3,
+                max_tokens=10 if phase == "rewrite" else 4096,
+                response_schema={"type": "object", "properties": {"summary": {"type": "string"}}}
+                if phase == "schema"
+                else None,
+                cancel_check=token.raise_if_cancelled,
+                **mock_functions,
+            )
+        assert len(attempts) == {"closing": 2, "synthesis": 1, "rewrite": 3, "schema": 3}[phase]
+        fallback_wire.assert_not_awaited()
+        secondary.call.assert_not_awaited()
+        secondary.call_with_tools.assert_not_awaited()
+        await primary.cleanup()
+        await secondary.cleanup()
+
+    @pytest.mark.asyncio
     async def test_disconnect_after_synthesis_map_stops_reduce(self, mock_llm, mock_functions, monkeypatch):
         from hindsight_api.cancellation import CancellationToken
         import hindsight_api.engine.reflect.agent as agent
